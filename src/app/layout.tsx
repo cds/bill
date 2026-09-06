@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { AppHeader } from '@/components/layout/app-header';
-import { BottomNav } from '@/components/layout/bottom-nav';
 import { Toaster } from 'sonner';
 
 const inter = Inter({
@@ -26,9 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} h-full`}>
       <body className="min-h-full flex flex-col font-sans antialiased bg-background text-foreground">
-        <AppHeader />
-        <main className="flex-1 pb-20 sm:pb-6">{children}</main>
-        <BottomNav />
+        {children}
         <Toaster richColors position="top-center" />
       </body>
     </html>

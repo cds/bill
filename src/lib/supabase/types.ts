@@ -3,8 +3,26 @@
 // Hand-written types matching the Supabase schema
 // ============================================================
 
+export type Business = {
+  id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  currency: string;
+  created_at: string;
+};
+
+export type BusinessMember = {
+  id: string;
+  user_id: string;
+  business_id: string;
+  role: 'owner' | 'staff';
+  created_at: string;
+};
+
 export type Item = {
   id: string;
+  business_id: string;
   name: string;
   unit: string;
   sale_price: number;
@@ -17,14 +35,16 @@ export type Item = {
   updated_at: string;
 };
 
-export type InsertItem = Omit<Item, 'id' | 'created_at' | 'updated_at'> & {
+export type InsertItem = Omit<Item, 'id' | 'business_id' | 'created_at' | 'updated_at'> & {
   id?: string;
+  business_id?: string;
 };
 
 export type UpdateItem = Partial<InsertItem>;
 
 export type Party = {
   id: string;
+  business_id: string;
   name: string;
   billing_name: string | null;
   phone: string | null;
@@ -35,14 +55,16 @@ export type Party = {
   updated_at: string;
 };
 
-export type InsertParty = Omit<Party, 'id' | 'created_at' | 'updated_at'> & {
+export type InsertParty = Omit<Party, 'id' | 'business_id' | 'created_at' | 'updated_at'> & {
   id?: string;
+  business_id?: string;
 };
 
 export type UpdateParty = Partial<InsertParty>;
 
 export type Invoice = {
   id: string;
+  business_id: string;
   invoice_number: number;
   invoice_date: string;
   party_id: string | null;
@@ -60,12 +82,14 @@ export type Invoice = {
   updated_at: string;
 };
 
-export type InsertInvoice = Omit<Invoice, 'id' | 'invoice_number' | 'created_at' | 'updated_at'> & {
+export type InsertInvoice = Omit<Invoice, 'id' | 'business_id' | 'invoice_number' | 'created_at' | 'updated_at'> & {
   id?: string;
+  business_id?: string;
 };
 
 export type InvoiceItem = {
   id: string;
+  business_id: string;
   invoice_id: string;
   item_id: string | null;
   item_name: string;
@@ -80,12 +104,14 @@ export type InvoiceItem = {
   created_at: string;
 };
 
-export type InsertInvoiceItem = Omit<InvoiceItem, 'id' | 'created_at'> & {
+export type InsertInvoiceItem = Omit<InvoiceItem, 'id' | 'business_id' | 'created_at'> & {
   id?: string;
+  business_id?: string;
 };
 
 export type StockAdjustment = {
   id: string;
+  business_id: string;
   item_id: string;
   type: 'add' | 'reduce' | 'sale' | 'purchase' | 'opening';
   quantity: number;
@@ -96,12 +122,14 @@ export type StockAdjustment = {
   created_at: string;
 };
 
-export type InsertStockAdjustment = Omit<StockAdjustment, 'id' | 'created_at'> & {
+export type InsertStockAdjustment = Omit<StockAdjustment, 'id' | 'business_id' | 'created_at'> & {
   id?: string;
+  business_id?: string;
 };
 
 export type Expense = {
   id: string;
+  business_id: string;
   date: string;
   category: string;
   amount: number;
@@ -111,8 +139,9 @@ export type Expense = {
   created_at: string;
 };
 
-export type InsertExpense = Omit<Expense, 'id' | 'created_at'> & {
+export type InsertExpense = Omit<Expense, 'id' | 'business_id' | 'created_at'> & {
   id?: string;
+  business_id?: string;
 };
 
 // Invoice with line items joined
