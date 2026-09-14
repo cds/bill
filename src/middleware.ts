@@ -52,9 +52,14 @@ export async function middleware(request: NextRequest) {
 
   // Role-Based Routing for Authenticated Users
   if (user) {
-    // Read the system role directly from the JWT (app_metadata) 
-    // This is much faster and doesn't require a separate DB query
-    const systemRole = user.app_metadata?.system_role || 'user';
+    // Fetch system_role from the public.users table
+    const { data: userData } = await supabase
+      .from('users')
+      .select('system_role')
+      .eq('id', user.id)
+      .single();
+    
+    const systemRole = userData?.system_role || 'user';
 
     // 1. Redirect away from login if already authenticated
     if (isAuthPage) {
