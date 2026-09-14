@@ -52,65 +52,72 @@ export async function middleware(request: NextRequest) {
 
   // Role-Based Routing for Authenticated Users
   if (user) {
+    // Read the system role directly from the JWT (app_metadata) 
+    // This is much faster and doesn't require a separate DB query
+    const systemRole = user.app_metadata?.system_role || 'user';
+
     // 1. Redirect away from login if already authenticated
     if (isAuthPage) {
       const url = request.nextUrl.clone();
-      url.pathname = '/';
+      url.pathname = systemRole === 'super_admin' ? '/admin' : '/';
       return NextResponse.redirect(url);
     }
 
-    // Fetch user's system role
-    const { data: userData } = await supabase
-      .from('users')
-      .select('system_role')
-      .eq('id', user.id)
-      .single();
+    // 2. Super Admin Logic
+    if (systemRole === 'super_admin') {
+      // If a super admin tries to go to the root or setup page, push them to the admin dashboard
+      if (pathname === '/' || isSetupPage) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/admin';
+        return NextResponse.redirect(url);
+      }
       
-    const systemRole = userData?.system_role || 'user';
+      // Let them access /admin freely and bypass all tenant checks below
+      return supabaseResponse;
+    }
 
-    // 2. Super Admin Protection
-    if (isAdminPage) {
-      if (systemRole !== 'super_admin') {
-        // Kick standard users out of the admin panel
+    // 3. Standard User / Tenant Logic
+    if (systemRole !== 'super_admin') {
+      // Kick standard users out of the admin panel
+      if (isAdminPage) {
         const url = request.nextUrl.clone();
         url.pathname = '/';
         return NextResponse.redirect(url);
       }
-      // Allowed: super admin proceeding to /admin
-    } 
-    // 3. Client User / Tenant Protection (Dashboard Routes)
-    else if (!isSetupPage) {
-      // Fetch the user's tenant record
-      const { data: memberData } = await supabase
-        .from('tenant_members')
-        .select('tenant_id, role')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single();
 
-      if (!memberData) {
-        // No tenant exists -> Redirect to onboarding/setup
-        const url = request.nextUrl.clone();
-        url.pathname = '/setup';
-        return NextResponse.redirect(url);
-      } else {
-        // Inject tenant details into headers for Server Components
-        requestHeaders.set('x-tenant-id', memberData.tenant_id);
-        requestHeaders.set('x-tenant-role', memberData.role);
-        
-        // Re-instantiate the response so Next.js sees the new request headers
-        const finalResponse = NextResponse.next({
-          request: {
-            headers: requestHeaders,
-          },
-        });
-        
-        // Preserve any session cookies that Supabase might have just refreshed
-        supabaseResponse.cookies.getAll().forEach((cookie) => {
-          finalResponse.cookies.set(cookie.name, cookie.value);
-        });
-        
-        supabaseResponse = finalResponse;
+      // Check tenant membership for all routes except /setup
+      if (!isSetupPage) {
+        const { data: memberData } = await supabase
+          .from('tenant_members')
+          .select('tenant_id, role')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+
+        if (!memberData) {
+          // No tenant exists -> Redirect to onboarding/setup
+          const url = request.nextUrl.clone();
+          url.pathname = '/setup';
+          return NextResponse.redirect(url);
+        } else {
+          // Inject tenant details into headers for Server Components
+          requestHeaders.set('x-tenant-id', memberData.tenant_id);
+          requestHeaders.set('x-tenant-role', memberData.role);
+          
+          // Re-instantiate the response so Next.js sees the new request headers
+          const finalResponse = NextResponse.next({
+            request: {
+              headers: requestHeaders,
+            },
+          });
+          
+          // Preserve any session cookies that Supabase might have just refreshed
+          supabaseResponse.cookies.getAll().forEach((cookie) => {
+            finalResponse.cookies.set(cookie.name, cookie.value);
+          });
+          
+          supabaseResponse = finalResponse;
+        }
       }
     }
   }
@@ -126,7 +133,6 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - api/health (health check)
-     * Feel free to modify this pattern to include more paths.
      */
     '/((?!_next/static|_next/image|favicon.ico|api/health|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
