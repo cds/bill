@@ -68,61 +68,57 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // 2. Super Admin Logic
-    if (systemRole === 'super_admin') {
-      // If a super admin tries to go to the root or setup page, push them to the admin dashboard
-      if (pathname === '/' || isSetupPage) {
-        const url = request.nextUrl.clone();
-        url.pathname = '/admin';
-        return NextResponse.redirect(url);
-      }
-      
-      // Let them access /admin freely and bypass all tenant checks below
-      return supabaseResponse;
+    // 2. Super Admin Access to Admin Pages
+    if (systemRole === 'super_admin' && isAdminPage) {
+      return supabaseResponse; // Allow direct access to admin pages without tenant context
     }
 
-    // 3. Standard User / Tenant Logic
-    if (systemRole !== 'super_admin') {
-      // Kick standard users out of the admin panel
-      if (isAdminPage) {
-        const url = request.nextUrl.clone();
-        url.pathname = '/';
-        return NextResponse.redirect(url);
-      }
+    // 3. Kick standard users out of the admin panel
+    if (systemRole !== 'super_admin' && isAdminPage) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      return NextResponse.redirect(url);
+    }
 
-      // Check tenant membership for all routes except /setup
-      if (!isSetupPage) {
-        const { data: memberData } = await supabase
-          .from('tenant_members')
-          .select('tenant_id, role')
-          .eq('user_id', user.id)
-          .limit(1)
-          .single();
+    // 4. Resolve Tenant Context (For ALL users trying to access the dashboard, including Super Admins)
+    if (!isSetupPage && !isAdminPage) {
+      const { data: memberData } = await supabase
+        .from('tenant_members')
+        .select('tenant_id, role')
+        .eq('user_id', user.id)
+        .limit(1)
+        .single();
 
-        if (!memberData) {
-          // No tenant exists -> Redirect to onboarding/setup
+      if (!memberData) {
+        // If a super_admin has no tenant but tries to access the dashboard (/), redirect to /admin instead of setup
+        if (systemRole === 'super_admin' && pathname === '/') {
           const url = request.nextUrl.clone();
-          url.pathname = '/setup';
+          url.pathname = '/admin';
           return NextResponse.redirect(url);
-        } else {
-          // Inject tenant details into headers for Server Components
-          requestHeaders.set('x-tenant-id', memberData.tenant_id);
-          requestHeaders.set('x-tenant-role', memberData.role);
-          
-          // Re-instantiate the response so Next.js sees the new request headers
-          const finalResponse = NextResponse.next({
-            request: {
-              headers: requestHeaders,
-            },
-          });
-          
-          // Preserve any session cookies that Supabase might have just refreshed
-          supabaseResponse.cookies.getAll().forEach((cookie) => {
-            finalResponse.cookies.set(cookie.name, cookie.value);
-          });
-          
-          supabaseResponse = finalResponse;
         }
+
+        // Otherwise redirect to onboarding/setup
+        const url = request.nextUrl.clone();
+        url.pathname = '/setup';
+        return NextResponse.redirect(url);
+      } else {
+        // Inject tenant details into headers for Server Components
+        requestHeaders.set('x-tenant-id', memberData.tenant_id);
+        requestHeaders.set('x-tenant-role', memberData.role);
+        
+        // Re-instantiate the response so Next.js sees the new request headers
+        const finalResponse = NextResponse.next({
+          request: {
+            headers: requestHeaders,
+          },
+        });
+        
+        // Preserve any session cookies that Supabase might have just refreshed
+        supabaseResponse.cookies.getAll().forEach((cookie) => {
+          finalResponse.cookies.set(cookie.name, cookie.value);
+        });
+        
+        supabaseResponse = finalResponse;
       }
     }
   }
