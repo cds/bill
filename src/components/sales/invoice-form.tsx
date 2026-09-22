@@ -384,7 +384,7 @@ export function InvoiceForm() {
         </Card>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t flex justify-end gap-2 md:gap-4 z-10 md:static md:bg-transparent md:border-t-0 md:p-0">
+      <div className="fixed bottom-16 sm:bottom-0 left-0 right-0 p-4 bg-background border-t flex justify-end gap-2 md:gap-4 z-40 md:static md:bg-transparent md:border-t-0 md:p-0">
         <Button 
           variant="outline" 
           onClick={() => handleSave(true)}

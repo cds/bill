@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { CopyUuidButton } from '@/components/admin/copy-uuid-button';
 
 export default async function AdminUsersPage() {
   const cookieStore = await cookies();
@@ -45,7 +46,7 @@ export default async function AdminUsersPage() {
     <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <PageHeader 
         title="Global Users" 
-        description="Super Admin view of all users and their mapped business tenants."
+        description="Super Admin view of all users and their mapped business tenants. Copy a UUID to assign them to a new business."
       />
 
       <Card>
@@ -53,7 +54,7 @@ export default async function AdminUsersPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>User ID</TableHead>
+                <TableHead>User ID (UUID)</TableHead>
                 <TableHead>System Role</TableHead>
                 <TableHead>Tenant Memberships</TableHead>
                 <TableHead>Joined Date</TableHead>
@@ -62,7 +63,10 @@ export default async function AdminUsersPage() {
             <TableBody>
               {users?.map((u: any) => (
                 <TableRow key={u.id}>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{u.id}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground flex items-center gap-2">
+                    {u.id}
+                    <CopyUuidButton uuid={u.id} />
+                  </TableCell>
                   <TableCell>
                     <Badge variant={u.system_role === 'super_admin' ? 'default' : 'secondary'}>
                       {u.system_role}
