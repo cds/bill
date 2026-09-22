@@ -7,6 +7,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CopyUuidButton } from '@/components/admin/copy-uuid-button';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminUsersPage() {
   const cookieStore = await cookies();
   const supabase = createServerClient(

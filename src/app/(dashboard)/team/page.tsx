@@ -7,6 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { UserPlus } from 'lucide-react';
+import { TenantUsersDialog } from '@/components/admin/tenant-users-dialog';
+
+export const dynamic = 'force-dynamic';
 
 export default async function TeamSettingsPage() {
   const cookieStore = await cookies();
@@ -28,7 +31,7 @@ export default async function TeamSettingsPage() {
   const tenantId = headersList.get('x-tenant-id');
   const tenantRole = headersList.get('x-tenant-role');
 
-  if (tenantRole !== 'tenant_admin') {
+  if (tenantRole !== 'tenant_admin' || !tenantId) {
     return (
       <div className="p-8 text-center text-muted-foreground">
         You do not have permission to view team settings.
@@ -54,10 +57,15 @@ export default async function TeamSettingsPage() {
           title="Team & Roles" 
           description="Manage who has access to this business and their roles."
         />
-        <Button>
-          <UserPlus className="w-4 h-4 mr-2" />
-          Invite User
-        </Button>
+        <TenantUsersDialog 
+          tenantId={tenantId}
+          trigger={
+            <Button>
+              <UserPlus className="w-4 h-4 mr-2" />
+              Invite User
+            </Button>
+          }
+        />
       </div>
 
       <Card>

@@ -11,6 +11,8 @@ import { TenantDialog } from '@/components/admin/tenant-dialog';
 import { DeleteTenantButton } from '@/components/admin/delete-tenant-button';
 import { TenantUsersDialog } from '@/components/admin/tenant-users-dialog';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminTenantsPage() {
   const cookieStore = await cookies();
   const supabase = createServerClient(
