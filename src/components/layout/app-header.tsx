@@ -62,12 +62,19 @@ export function AppHeader({ userRole, systemRole }: { userRole?: string, systemR
             </span>
           </Link>
 
-          {/* Role Badge */}
-          {userRole && (
-            <Badge variant={userRole === 'tenant_admin' ? 'default' : 'secondary'} className="hidden sm:inline-flex mr-6 capitalize text-xs">
-              {userRole.replace('_', ' ')}
-            </Badge>
-          )}
+          {/* Role Badges */}
+          <div className="hidden sm:flex items-center gap-2 mr-6">
+            {systemRole === 'super_admin' && (
+              <Badge variant="destructive" className="capitalize text-[10px] leading-none px-2 py-0.5 font-bold">
+                Super Admin
+              </Badge>
+            )}
+            {userRole && (
+              <Badge variant={userRole === 'tenant_admin' ? 'default' : 'secondary'} className="capitalize text-[10px] leading-none px-2 py-0.5">
+                {userRole.replace('_', ' ')}
+              </Badge>
+            )}
+          </div>
 
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-1">
@@ -98,8 +105,15 @@ export function AppHeader({ userRole, systemRole }: { userRole?: string, systemR
 
         {/* Mobile Brand (centered) */}
         <div className="absolute left-1/2 -translate-x-1/2 text-center flex flex-col items-center sm:hidden">
-          <span className="font-bold text-lg">Eatera Foods</span>
-          {userRole && <span className="text-[10px] text-muted-foreground capitalize leading-none">{userRole.replace('_', ' ')}</span>}
+          <span className="font-bold text-lg leading-tight">Eatera Foods</span>
+          <div className="flex gap-1 mt-0.5">
+            {systemRole === 'super_admin' && (
+              <span className="text-[9px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded font-bold capitalize leading-none">Super Admin</span>
+            )}
+            {userRole && (
+              <span className="text-[9px] bg-muted-foreground/10 text-muted-foreground px-1.5 py-0.5 rounded capitalize leading-none">{userRole.replace('_', ' ')}</span>
+            )}
+          </div>
         </div>
 
         {/* Logout Button */}
