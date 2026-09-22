@@ -45,9 +45,7 @@ export async function middleware(request: NextRequest) {
 
   // Route Protection: Unauthenticated users go to /login
   if (!user && !isAuthPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   // Role-Based Routing for Authenticated Users
@@ -63,9 +61,8 @@ export async function middleware(request: NextRequest) {
 
     // 1. Redirect away from login if already authenticated
     if (isAuthPage) {
-      const url = request.nextUrl.clone();
-      url.pathname = systemRole === 'super_admin' ? '/admin' : '/';
-      return NextResponse.redirect(url);
+      const target = systemRole === 'super_admin' ? '/admin' : '/';
+      return NextResponse.redirect(new URL(target, request.url));
     }
 
     // 2. Super Admin Access to Admin Pages
@@ -75,9 +72,7 @@ export async function middleware(request: NextRequest) {
 
     // 3. Kick standard users out of the admin panel
     if (systemRole !== 'super_admin' && isAdminPage) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/';
-      return NextResponse.redirect(url);
+      return NextResponse.redirect(new URL('/', request.url));
     }
 
     // 4. Resolve Tenant Context (For ALL users trying to access the dashboard, including Super Admins)
@@ -92,15 +87,11 @@ export async function middleware(request: NextRequest) {
       if (!memberData) {
         // If a super_admin has no tenant but tries to access the dashboard (/), redirect to /admin instead of setup
         if (systemRole === 'super_admin' && pathname === '/') {
-          const url = request.nextUrl.clone();
-          url.pathname = '/admin';
-          return NextResponse.redirect(url);
+          return NextResponse.redirect(new URL('/admin', request.url));
         }
 
         // Otherwise redirect to onboarding/setup
-        const url = request.nextUrl.clone();
-        url.pathname = '/setup';
-        return NextResponse.redirect(url);
+        return NextResponse.redirect(new URL('/setup', request.url));
       } else {
         // Inject tenant details into headers for Server Components
         requestHeaders.set('x-tenant-id', memberData.tenant_id);
