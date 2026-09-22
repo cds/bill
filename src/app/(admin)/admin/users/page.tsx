@@ -63,9 +63,11 @@ export default async function AdminUsersPage() {
             <TableBody>
               {users?.map((u: any) => (
                 <TableRow key={u.id}>
-                  <TableCell className="font-mono text-xs text-muted-foreground flex items-center gap-2">
-                    {u.id}
-                    <CopyUuidButton uuid={u.id} />
+                  <TableCell>
+                    <div className="font-mono text-xs text-muted-foreground flex items-center gap-2">
+                      {u.id}
+                      <CopyUuidButton uuid={u.id} />
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={u.system_role === 'super_admin' ? 'default' : 'secondary'}>
