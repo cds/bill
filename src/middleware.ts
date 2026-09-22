@@ -105,6 +105,7 @@ export async function middleware(request: NextRequest) {
         // Inject tenant details into headers for Server Components
         requestHeaders.set('x-tenant-id', memberData.tenant_id);
         requestHeaders.set('x-tenant-role', memberData.role);
+        requestHeaders.set('x-system-role', systemRole);
         
         // Re-instantiate the response so Next.js sees the new request headers
         const finalResponse = NextResponse.next({

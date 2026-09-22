@@ -2,14 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Package, Users, ShoppingCart, LayoutDashboard, Receipt, LogOut, Shield } from 'lucide-react';
+import { Package, Users, ShoppingCart, LayoutDashboard, Receipt, LogOut, Shield, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { createBrowserClient } from '@supabase/ssr';
 import { toast } from 'sonner';
 
-export function AppHeader({ userRole }: { userRole?: string }) {
+export function AppHeader({ userRole, systemRole }: { userRole?: string, systemRole?: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createBrowserClient(
@@ -41,6 +41,11 @@ export function AppHeader({ userRole }: { userRole?: string }) {
   if (userRole === 'tenant_admin') {
     desktopNavItems.push({ href: '/team', label: 'Team', icon: Shield });
     desktopNavItems.push({ href: '/logs', label: 'Logs', icon: Shield });
+  }
+
+  // If super_admin, give them a link to the Super Admin Panel
+  if (systemRole === 'super_admin') {
+    desktopNavItems.push({ href: '/admin', label: 'Admin Panel', icon: Settings });
   }
 
   return (

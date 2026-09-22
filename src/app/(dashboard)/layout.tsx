@@ -9,10 +9,11 @@ export default async function DashboardLayout({
 }) {
   const headersList = await headers();
   const role = headersList.get('x-tenant-role') || 'worker';
+  const systemRole = headersList.get('x-system-role') || 'user';
   
   return (
     <>
-      <AppHeader userRole={role} />
+      <AppHeader userRole={role} systemRole={systemRole} />
       <main className="flex-1 pb-20 sm:pb-6">{children}</main>
       <BottomNav />
     </>
