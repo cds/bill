@@ -50,28 +50,35 @@
 | **V1**: Core Billing & Inventory | Item Catalog, Party Management, Add Sale, Invoice saving, Stock deduction | ✅ **Code complete & verified** |
 | **V2**: Stock Adjustments & Expenses | Stock In/Out modal, Expense logging, Dashboard metrics, Monthly chart | ✅ **Code complete** |
 | **V3**: Reporting & PDF Engine | Sale Report, Stock Detail Report, Party Statement, PDF generation | ✅ **Code complete** |
-| **V4**: Auth, Multi-Tenancy & Deploy | Supabase Auth, RLS, Business profile, Vercel deployment | ✅ **Code complete** |
+| **V4**: Auth & Business | Supabase Auth, `businesses` mapping | ✅ **Code complete** |
+| **V5**: Multi-Tenant & Soft Delete | `tenants`, `tenant_members`, Super Admin vs Client Admin RBAC, Global Audit Logs | ✅ **Code complete** |
 
 ---
 
-### V1, V2, V3, V4 — Completed Scope ✅
+### Phase 5 Multi-Tenant & RBAC Analysis (Reference)
 
-**1. Project & Database Structure:**
-- Next.js 16.3.4 (App Router) + Tailwind v4 + shadcn/ui.
-- Supabase PostgreSQL schema complete: `items`, `parties`, `invoices`, `invoice_items`, `stock_adjustments`, `expenses`.
-- Server/Client Supabase utilities and TypeScript types implemented.
+The application utilizes a strict, Postgres-enforced Role-Based Access Control (RBAC) architecture.
 
-**2. Core Modules (Implemented & Verified):**
-- **Dashboard (`/`)**: Real-time metrics (Sales, Receivables, Payables, Cash-in-Hand) and recent transactions.
-- **Items (`/items`)**: Catalog, CRUD, Stock Ledger, manual stock adjustments.
-- **Parties (`/parties`)**: Customers/Suppliers CRUD, ledger view, balances.
-- **Sales (`/sales`)**: Full invoice creation workflow (items, taxes, discounts, cash/credit), stock auto-deduction, invoice list, receipt view.
-- **Expenses (`/expenses`)**: Categorized expense tracking.
-- **Reports (`/reports`)**: Date-filtered reports (Sales, Expenses, Stock Detail, Party Statement).
-- **Multi-Tenancy**: Supabase Auth integration, isolated `business_id` spaces, Row Level Security (RLS) enforcement, Next.js Middleware route protection.
-- **PDF & Sharing**: Native `@media print` layouts for A4/thermal printing, and WhatsApp Share integrations.
+**1. Database Schema & Triggers:**
+- **Users Table** (`public.users`): Stores the global `system_role` (`super_admin` or `user`).
+- **Tenants & Members** (`public.tenants`, `public.tenant_members`): Maps users to specific businesses with a `tenant_role` (`tenant_admin`, `distributor`, `worker`).
+- **Soft Deletes**: Deletions on core business tables update `deleted_at` instead of hard deleting. A `BEFORE UPDATE` Postgres trigger ensures *only* `tenant_admin` (or `super_admin`) can modify the `deleted_at` column.
+- **Audit Logging**: The `005_audit_logs.sql` trigger automatically logs every `INSERT`, `UPDATE`, and `SOFT_DELETE` into an immutable `audit_logs` ledger.
+- **Auto-Provisioning**: The `handle_new_user` Postgres trigger ensures that upon sign-up, users are automatically placed into `public.users`, assigned a default `tenant`, and made a `tenant_admin`.
 
-*All TypeScript errors and base-ui prop incompatibilities have been resolved. The app compiles cleanly.*
+**2. Application Access Levels (What they see):**
+- **Super Admin (`system_role = 'super_admin'`)**:
+  - **Data Level (RLS)**: Bypasses all Row Level Security. Can read/write every row across all tenants globally. Can view soft-deleted rows and global audit logs.
+  - **Application UI**: Has exclusive access to `/admin/tenants` (Global Tenant Management) and `/admin/logs` (Global Audit Ledger). 
+  - **Dashboard Usage**: Because the `006` migration backfilled Super Admins with their own default tenant, they also have a valid `tenant_id`. When a Super Admin visits the normal dashboard (`/`, `/sales`), the Next.js Middleware resolves their personal tenant, allowing them to use the app identically to a standard user.
+- **Tenant Admin (`tenant_role = 'tenant_admin'`)**:
+  - **Data Level (RLS)**: Strictly isolated to rows where `tenant_id` matches their own. Cannot see rows where `deleted_at IS NOT NULL`.
+  - **Application UI**: Has exclusive access to `/team` (invite users, assign roles) and `/logs` (scoped view of their own business's audit trail). Can perform Soft Deletes.
+- **Tenant Worker / Distributor**:
+  - **Data Level (RLS)**: Same row isolation as Tenant Admin. 
+  - **Application UI**: Has access to core business flows (`/sales`, `/items`) but is entirely blocked from `/team`, `/logs`, and `/admin`. The Soft Delete trigger blocks them from deleting records.
+
+*All TypeScript errors, Next.js Middleware routing boundaries, and base-ui prop incompatibilities have been resolved. The app compiles cleanly.*
 
 ---
 
@@ -123,4 +130,14 @@ bill/
 2. **Env**: Copy `.env.local.example` → `.env.local`, fill in Supabase URL + anon key
 3. **Dev**: `npm run dev` (uses Turbopack)
 4. **Build**: `npm run build` (needs network for Google Fonts)
+
+---
+
+## Future Roadmap: Advanced Auth & RBAC
+1. **Granular Permissions (Custom Roles)**: Instead of rigid enums, allow Tenant Admins to create custom roles (e.g., "Cashier") with specific boolean toggles (Can create invoice, Can delete items, Can view reports).
+2. **User Invite Email Flow**: Transition from UUID-based assignment to a magic link email invitation flow, allowing new workers to seamlessly join a tenant.
+3. **Manager Approvals**: Enforce rule-based workflows (e.g., Worker needs a manager's PIN/Approval to issue a discount over 10% or delete a critical invoice).
+4. **Tenant MFA Enforcement**: Allow Tenant Admins to mandate that all workers enable Two-Factor Authentication (2FA) via Supabase.
+5. **Super Admin Impersonation Mode**: Allow Super Admins to instantly "Login As" a specific tenant to debug issues and see exactly what the user sees.
+6. **API Key Management**: Allow tenants to generate scoped API keys for external POS or E-commerce integrations.
 
