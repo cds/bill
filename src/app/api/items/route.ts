@@ -22,12 +22,18 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const tenantId = request.headers.get('x-tenant-id')
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 })
+  }
+
   const supabase = await createClient()
   const body = await request.json()
 
   // Set current_stock to opening_stock
   const itemData = {
     ...body,
+    tenant_id: tenantId,
     current_stock: body.opening_stock || 0
   }
 
@@ -38,6 +44,7 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (itemError) {
+    console.error('Error creating item:', itemError)
     return NextResponse.json({ error: itemError.message }, { status: 500 })
   }
 
@@ -46,6 +53,7 @@ export async function POST(request: NextRequest) {
       .from('stock_adjustments')
       .insert({
         item_id: item.id,
+        tenant_id: tenantId,
         quantity: item.opening_stock,
         type: 'opening',
         notes: 'Opening stock'
