@@ -26,6 +26,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const tenantId = request.headers.get('x-tenant-id');
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+  }
+
   const supabase = await createClient();
   const body = await request.json();
   const { name, phone, address, type } = body;
@@ -36,7 +41,7 @@ export async function POST(request: Request) {
 
   const { data, error } = await supabase
     .from('parties')
-    .insert([{ name, phone, address, type }])
+    .insert([{ name, phone, address, type, tenant_id: tenantId }])
     .select()
     .single();
 

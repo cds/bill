@@ -24,6 +24,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const tenantId = request.headers.get('x-tenant-id');
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+  }
+
   try {
     const supabase = await createClient();
     const body = await request.json();
@@ -41,6 +46,7 @@ export async function POST(request: Request) {
       payment_mode,
       payment_status: 'paid', // Defaulting to paid
       notes: notes || null,
+      tenant_id: tenantId,
     };
     
     const { data, error } = await supabase

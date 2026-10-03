@@ -142,6 +142,7 @@ export type Expense = {
 export type InsertExpense = Omit<Expense, 'id' | 'business_id' | 'created_at'> & {
   id?: string;
   business_id?: string;
+  tenant_id: string;
 };
 
 // Invoice with line items joined
