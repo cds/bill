@@ -15,7 +15,7 @@ export default async function DashboardLayout({
     <>
       <AppHeader userRole={role} systemRole={systemRole} />
       <main className="flex-1 pb-20 sm:pb-6">{children}</main>
-      <BottomNav />
+      <BottomNav systemRole={systemRole} />
     </>
   );
 }
