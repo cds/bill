@@ -25,6 +25,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const tenantId = request.headers.get('x-tenant-id');
+    if (!tenantId) {
+      return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+    }
+
     const supabase = await createClient();
     const body = await request.json();
     
@@ -41,6 +46,7 @@ export async function POST(request: Request) {
       payment_mode,
       payment_status: 'paid', // Defaulting to paid
       notes: notes || null,
+      tenant_id: tenantId,
     };
     
     const { data, error } = await supabase
@@ -51,7 +57,8 @@ export async function POST(request: Request) {
       
     if (error) {
       console.error('Error creating expense:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      const status = error.code === '42501' ? 403 : 500;
+      return NextResponse.json({ error: error.message }, { status });
     }
     
     return NextResponse.json(data, { status: 201 });

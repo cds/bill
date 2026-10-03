@@ -22,6 +22,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const tenantId = request.headers.get('x-tenant-id');
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+  }
+
   const supabase = await createClient();
   
   try {
@@ -66,6 +71,7 @@ export async function POST(request: Request) {
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
       .insert({
+        tenant_id: tenantId,
         invoice_date: invoice_date || new Date().toISOString().split('T')[0],
         party_id: party_id || null,
         party_name,
@@ -86,6 +92,7 @@ export async function POST(request: Request) {
 
     // Prepare items to insert
     const invoiceItemsToInsert = computedItems.map((item: any) => ({
+      tenant_id: tenantId,
       invoice_id: invoice.id,
       item_id: item.item_id || null,
       item_name: item.item_name,
@@ -131,6 +138,7 @@ export async function POST(request: Request) {
 
       // Record adjustments
       const adjustments = itemsWithIds.map((item: any) => ({
+        tenant_id: tenantId,
         item_id: item.item_id,
         type: 'sale',
         quantity: item.quantity,

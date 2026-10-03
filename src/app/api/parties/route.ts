@@ -26,22 +26,37 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const tenantId = request.headers.get('x-tenant-id');
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+  }
+
   const supabase = await createClient();
   const body = await request.json();
   const { name, phone, address, type } = body;
 
-  if (!name) {
+  if (typeof name !== 'string' || !name.trim()) {
     return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  }
+  if (type !== undefined && type !== 'customer' && type !== 'supplier') {
+    return NextResponse.json({ error: 'Type must be customer or supplier' }, { status: 400 });
   }
 
   const { data, error } = await supabase
     .from('parties')
-    .insert([{ name, phone, address, type }])
+    .insert([{
+      name: name.trim(),
+      phone: phone || null,
+      address: address || null,
+      type: type || 'customer',
+      tenant_id: tenantId,
+    }])
     .select()
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const status = error.code === '42501' ? 403 : 500;
+    return NextResponse.json({ error: error.message }, { status });
   }
 
   return NextResponse.json(data, { status: 201 });

@@ -42,6 +42,7 @@ export function PartySearch({
   const [newName, setNewName] = React.useState('');
   const [newPhone, setNewPhone] = React.useState('');
   const [adding, setAdding] = React.useState(false);
+  const [quickAddError, setQuickAddError] = React.useState<string | null>(null);
 
   const fetchParties = React.useCallback(async () => {
     try {
@@ -65,6 +66,7 @@ export function PartySearch({
   const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdding(true);
+    setQuickAddError(null);
     try {
       const res = await fetch('/api/parties', {
         method: 'POST',
@@ -79,9 +81,13 @@ export function PartySearch({
         setNewName('');
         setNewPhone('');
         setOpen(false);
+      } else {
+        const response = await res.json().catch(() => null);
+        setQuickAddError(response?.error || 'Failed to add party');
       }
     } catch (error) {
       console.error(error);
+      setQuickAddError(error instanceof Error ? error.message : 'Failed to add party');
     } finally {
       setAdding(false);
     }
@@ -154,6 +160,7 @@ export function PartySearch({
             <DialogTitle>Quick Add Customer</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleQuickAdd} className="space-y-4">
+            {quickAddError && <p role="alert" className="text-sm text-destructive">{quickAddError}</p>}
             <div className="space-y-2">
               <Label htmlFor="quick-name">Name *</Label>
               <Input

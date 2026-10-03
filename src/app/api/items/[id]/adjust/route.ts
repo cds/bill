@@ -6,6 +6,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const tenantId = request.headers.get('x-tenant-id')
+    if (!tenantId) {
+      return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 })
+    }
+
     const { id } = await params
     const supabase = await createClient()
     const body = await request.json()
@@ -35,6 +40,7 @@ export async function POST(
       .from('stock_adjustments')
       .insert({
         item_id: id,
+        tenant_id: tenantId,
         type,
         quantity: parsedQuantity,
         date,

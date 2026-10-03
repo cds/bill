@@ -34,6 +34,7 @@ export function PartyForm({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [name, setName] = useState(party?.name || '');
   const [phone, setPhone] = useState(party?.phone || '');
   const [address, setAddress] = useState(party?.address || '');
@@ -42,6 +43,7 @@ export function PartyForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMessage(null);
 
     try {
       const url = party ? `/api/parties/${party.id}` : '/api/parties';
@@ -54,7 +56,8 @@ export function PartyForm({
       });
 
       if (!res.ok) {
-        throw new Error('Failed to save party');
+        const response = await res.json().catch(() => null);
+        throw new Error(response?.error || 'Failed to save party');
       }
 
       onSaved();
@@ -62,6 +65,7 @@ export function PartyForm({
       router.refresh();
     } catch (error) {
       console.error(error);
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save party');
     } finally {
       setLoading(false);
     }
@@ -74,6 +78,7 @@ export function PartyForm({
           <DialogTitle>{party ? 'Edit Party' : 'Add Party'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {errorMessage && <p role="alert" className="text-sm text-destructive">{errorMessage}</p>}
           <div className="space-y-2">
             <Label htmlFor="name">Name *</Label>
             <Input
