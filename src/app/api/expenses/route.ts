@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
     
-    const expenseData: InsertExpense = {
+    const expenseData: InsertExpense & { tenant_id: string } = {
       date,
       category,
       amount: Number(amount),
