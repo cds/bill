@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [isRecovery, setIsRecovery] = useState(false);
   const router = useRouter();
 
   const supabase = createBrowserClient(
@@ -22,12 +24,39 @@ export default function LoginPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecovery(true);
+        setIsForgotPassword(false);
+        setIsSignUp(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      if (isSignUp) {
+      if (isRecovery) {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+        toast.success('Password updated. You can now sign in.');
+        setIsRecovery(false);
+        setPassword('');
+        router.push('/');
+        router.refresh();
+      } else if (isForgotPassword) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/login`,
+        });
+        if (error) throw error;
+        toast.success('If an account exists for this email, a password reset link has been sent.');
+        setIsForgotPassword(false);
+      } else if (isSignUp) {
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -62,7 +91,13 @@ export default function LoginPage() {
           <div>
             <CardTitle className="text-2xl font-bold tracking-tight">Eatera Foods</CardTitle>
             <CardDescription className="mt-1">
-              {isSignUp ? 'Create a new account' : 'Sign in to your account'}
+              {isRecovery
+                ? 'Choose a new password'
+                : isForgotPassword
+                  ? 'Reset your password'
+                  : isSignUp
+                    ? 'Create a new account'
+                    : 'Sign in to your account'}
             </CardDescription>
           </div>
         </CardHeader>
@@ -79,29 +114,57 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
+            {!isForgotPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="password">{isRecovery ? 'New password' : 'Password'}</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={isRecovery ? 8 : undefined}
+                  autoComplete={isRecovery ? 'new-password' : 'current-password'}
+                />
+              </div>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Processing...' : isSignUp ? 'Sign Up' : 'Sign In'}
+              {loading
+                ? 'Processing...'
+                : isRecovery
+                  ? 'Update Password'
+                  : isForgotPassword
+                    ? 'Send Reset Link'
+                    : isSignUp
+                      ? 'Sign Up'
+                      : 'Sign In'}
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex justify-center">
-          <Button
-            variant="ghost"
-            className="text-sm text-muted-foreground hover:text-primary"
-            onClick={() => setIsSignUp(!isSignUp)}
-          >
-            {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-          </Button>
+        <CardFooter className="flex flex-col items-center gap-1">
+          {!isRecovery && !isForgotPassword && !isSignUp && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-sm text-muted-foreground hover:text-primary"
+              onClick={() => setIsForgotPassword(true)}
+            >
+              Forgot password?
+            </Button>
+          )}
+          {!isRecovery && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-sm text-muted-foreground hover:text-primary"
+              onClick={() => {
+                setIsForgotPassword(false);
+                setIsSignUp(!isSignUp);
+              }}
+            >
+              {isForgotPassword || isSignUp ? 'Back to sign in' : "Don't have an account? Sign up"}
+            </Button>
+          )}
         </CardFooter>
       </Card>
     </div>
