@@ -74,8 +74,8 @@ export default function LoginPage() {
         router.push('/');
         router.refresh();
       }
-    } catch (error: any) {
-      toast.error(error.message || 'An error occurred during authentication');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'An error occurred during authentication');
     } finally {
       setLoading(false);
     }
