@@ -50,9 +50,9 @@ export default function LoginPage() {
         router.push('/');
         router.refresh();
       } else if (isForgotPassword) {
-        const redirectUrl = `${window.location.origin}/login`;
+        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://eatera.vercel.app';
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: redirectUrl,
+          redirectTo: `${baseUrl}/login`,
         });
         if (error) throw error;
         toast.success('If an account exists for this email, a password reset link has been sent.');
