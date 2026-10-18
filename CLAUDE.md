@@ -17,8 +17,9 @@
 
 ### Key Commands
 ```bash
-npm run test       # Watch mode
-npm run test:run   # Single run (CI)
+npm run test           # Watch mode
+npm run test:run       # Single run (CI)
+npm run test:coverage  # Generates terminal & interactive HTML report in coverage/index.html
 npx vitest run --reporter=verbose  # Verbose single run
 ```
 
