@@ -94,7 +94,7 @@ export default async function DashboardPage() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <Link href="/sales/new">
+        <Link href="/sales/new" prefetch={false}>
           <Button
             variant="default"
             className="w-full h-auto flex-col gap-1.5 py-4 bg-primary hover:bg-primary/90"
@@ -103,7 +103,7 @@ export default async function DashboardPage() {
             <span className="text-xs font-medium">Add Sale</span>
           </Button>
         </Link>
-        <Link href="/expenses">
+        <Link href="/expenses" prefetch={false}>
           <Button
             variant="outline"
             className="w-full h-auto flex-col gap-1.5 py-4"
@@ -112,7 +112,7 @@ export default async function DashboardPage() {
             <span className="text-xs font-medium">Add Expense</span>
           </Button>
         </Link>
-        <Link href="/items">
+        <Link href="/items" prefetch={false}>
           <Button
             variant="outline"
             className="w-full h-auto flex-col gap-1.5 py-4"
@@ -121,7 +121,7 @@ export default async function DashboardPage() {
             <span className="text-xs font-medium">Adjust Stock</span>
           </Button>
         </Link>
-        <Link href="/reports">
+        <Link href="/reports" prefetch={false}>
           <Button
             variant="outline"
             className="w-full h-auto flex-col gap-1.5 py-4"
@@ -182,6 +182,7 @@ export default async function DashboardPage() {
             </CardTitle>
             <Link
               href="/sales"
+              prefetch={false}
               className="text-xs text-primary hover:underline"
             >
               View All →
@@ -234,6 +235,7 @@ async function RecentTransactions() {
           <Link
             key={inv.id}
             href={`/sales/${inv.id}`}
+            prefetch={false}
             className="flex items-center justify-between text-sm hover:bg-muted rounded px-2 py-2 -mx-2 transition-colors"
           >
             <div className="min-w-0 flex-1">

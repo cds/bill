@@ -50,14 +50,23 @@ export async function middleware(request: NextRequest) {
 
   // Role-Based Routing for Authenticated Users
   if (user) {
-    // Fetch system_role from the public.users table
-    const { data: userData } = await supabase
-      .from('users')
-      .select('system_role')
-      .eq('id', user.id)
-      .single();
+    // Fetch system_role and tenant membership in parallel to cut latency in half
+    const [userRes, memberRes] = await Promise.all([
+      supabase
+        .from('users')
+        .select('system_role')
+        .eq('id', user.id)
+        .single(),
+      supabase
+        .from('tenant_members')
+        .select('tenant_id, role')
+        .eq('user_id', user.id)
+        .limit(1)
+        .single(),
+    ]);
     
-    const systemRole = userData?.system_role || 'user';
+    const systemRole = userRes.data?.system_role || 'user';
+    const memberData = memberRes.data;
 
     // 1. Redirect away from login if already authenticated
     if (isAuthPage) {
@@ -77,13 +86,6 @@ export async function middleware(request: NextRequest) {
 
     // 4. Resolve Tenant Context (For ALL users trying to access the dashboard, including Super Admins)
     if (!isSetupPage && !isAdminPage) {
-      const { data: memberData } = await supabase
-        .from('tenant_members')
-        .select('tenant_id, role')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single();
-
       if (!memberData) {
         // If a super_admin has no tenant but tries to access the dashboard (/), redirect to /admin instead of setup
         if (systemRole === 'super_admin' && pathname === '/') {

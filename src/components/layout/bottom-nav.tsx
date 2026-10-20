@@ -34,6 +34,7 @@ export function BottomNav({ systemRole }: { systemRole?: string }) {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 className="flex flex-1 flex-col items-center justify-center -mt-5 min-w-0"
               >
                 <div className="rounded-full bg-primary p-3 shadow-lg shadow-primary/25">
@@ -50,6 +51,7 @@ export function BottomNav({ systemRole }: { systemRole?: string }) {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               className={cn(
                 'flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 py-1 px-1',
                 isActive

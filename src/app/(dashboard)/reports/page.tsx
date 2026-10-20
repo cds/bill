@@ -47,7 +47,7 @@ export default function ReportsDirectoryPage() {
         {reports.map((report) => {
           const Icon = report.icon;
           return (
-            <Link key={report.href} href={report.href}>
+            <Link key={report.href} href={report.href} prefetch={false}>
               <Card className="hover:border-primary transition-colors cursor-pointer h-full">
                 <CardHeader className="flex flex-row items-center gap-4 pb-2">
                   <div className={`p-3 rounded-lg ${report.bgColor}`}>

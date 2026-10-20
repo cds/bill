@@ -6,16 +6,13 @@ import { Package, Users, ShoppingCart, LayoutDashboard, Receipt, LogOut, Shield,
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
 export function AppHeader({ userRole, systemRole }: { userRole?: string, systemRole?: string }) {
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createClient();
 
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
@@ -53,7 +50,7 @@ export function AppHeader({ userRole, systemRole }: { userRole?: string, systemR
       <div className="flex items-center justify-between h-14 px-4 sm:px-6">
         <div className="flex items-center">
           {/* Logo / Brand */}
-          <Link href="/" className="flex items-center gap-2 mr-4">
+          <Link href="/" prefetch={false} className="flex items-center gap-2 mr-4">
             <div className="rounded-lg bg-primary p-1.5">
               <Package className="h-5 w-5 text-primary-foreground" />
             </div>
@@ -88,6 +85,7 @@ export function AppHeader({ userRole, systemRole }: { userRole?: string, systemR
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={false}
                   className={cn(
                     'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors',
                     isActive
