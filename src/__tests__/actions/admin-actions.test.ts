@@ -1,7 +1,7 @@
 /**
  * Tests: src/app/actions/admin-actions.ts
  *
- * Covers test IDs: A-01 → A-16
+ * Covers test IDs: A-01 → A-20
  *
  * Server Actions tested:
  *  - createTenant(name, status)
@@ -16,7 +16,10 @@
  *  - Specific error code mapping in addTenantMember:
  *      - 23503 -> 'User UUID not found in the system.'
  *      - 23505 -> 'User is already a member of this tenant.'
+ *      - other -> generic error fallthrough (line 85)
  *  - Cache revalidation checks (revalidatePath)
+ *  - getAll callback coverage (line 15)
+ *  - Explicit role-based blocking for worker and tenant admin roles
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -31,6 +34,17 @@ import {
 const SUPER_USER_ID = 'super-user-uuid-000'
 const REGULAR_USER_ID = 'regular-user-uuid-111'
 const TENANT_ID = 'tenant-uuid-222'
+
+type CookieToSet = {
+  name: string
+  value: string
+  options?: { path?: string }
+}
+
+type CookieAdapter = {
+  getAll: () => { name: string; value: string }[]
+  setAll: (cookiesToSet: CookieToSet[]) => void
+}
 
 // Mock next/headers
 vi.mock('next/headers', () => ({
@@ -131,6 +145,26 @@ describe('admin-actions: RBAC Gatekeeping', () => {
 
     const resAddMember = await addTenantMember(TENANT_ID, 'user-1', 'worker')
     expect(resAddMember).toEqual({ error: 'Forbidden' })
+  })
+
+  // A-18
+  it('A-18: Worker role is explicitly Forbidden from createTenant', async () => {
+    setupAuth('user') // worker has system_role 'user'
+    const res = await createTenant('Worker Attempt', 'active')
+    expect(res).toEqual({ error: 'Forbidden' })
+  })
+
+  // A-19
+  it('A-19: Tenant admin (business user) is Forbidden from admin actions', async () => {
+    setupAuth('user') // tenant_admin also has system_role 'user'
+    const resUpdate = await updateTenant(TENANT_ID, 'Business Attempt', 'active')
+    expect(resUpdate).toEqual({ error: 'Forbidden' })
+
+    const resDelete = await deleteTenant(TENANT_ID)
+    expect(resDelete).toEqual({ error: 'Forbidden' })
+
+    const resMember = await addTenantMember(TENANT_ID, 'user-1', 'worker')
+    expect(resMember).toEqual({ error: 'Forbidden' })
   })
 })
 
@@ -344,5 +378,81 @@ describe('admin-actions: addTenantMember', () => {
 
     expect(res).toEqual({ error: 'User is already a member of this tenant.' })
   })
+
+  // A-15b
+  it('A-15b: Generic DB error (not 23503/23505) in addTenantMember hits throw error fallthrough', async () => {
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'users') {
+        return makeChain({ data: { system_role: 'super_admin' }, error: null })
+      }
+      if (table === 'tenant_members') {
+        return makeChain({ data: null, error: { code: '42501', message: 'Permission denied by RLS' } })
+      }
+      return makeChain({ data: null, error: null })
+    })
+
+    const res = await addTenantMember(TENANT_ID, REGULAR_USER_ID, 'worker')
+    expect(res).toEqual({ error: 'Permission denied by RLS' })
+  })
+
+  // A-20
+  it('A-20: Super admin adds worker role member successfully', async () => {
+    let memberData: unknown = null
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'users') return makeChain({ data: { system_role: 'super_admin' }, error: null })
+      if (table === 'tenant_members') {
+        const chain = makeChain({ data: null, error: null })
+        chain.insert = vi.fn().mockImplementation((payload) => {
+          memberData = payload
+          return chain
+        })
+        return chain
+      }
+      return makeChain({ data: null, error: null })
+    })
+
+    const res = await addTenantMember(TENANT_ID, REGULAR_USER_ID, 'worker')
+    expect(res).toEqual({ success: true })
+    expect(memberData).toEqual({ tenant_id: TENANT_ID, user_id: REGULAR_USER_ID, role: 'worker' })
+  })
 })
 
+describe('admin-actions: getAdminSupabase internals', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // A-17
+  it('A-17: getAll callback in getAdminSupabase calls cookieStore.getAll()', async () => {
+    const mockGetAll = vi.fn().mockReturnValue([{ name: 'test', value: '123' }])
+    const { cookies: mockCookies } = await import('next/headers')
+    ;(mockCookies as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getAll: mockGetAll,
+      set: vi.fn(),
+    })
+
+    const { createServerClient } = await import('@supabase/ssr')
+    let capturedGetAll: CookieAdapter['getAll'] | null = null
+    let capturedSetAll: CookieAdapter['setAll'] | null = null
+    ;(createServerClient as ReturnType<typeof vi.fn>).mockImplementation(
+      (url: string, key: string, options: { cookies: CookieAdapter }) => {
+        capturedGetAll = options.cookies.getAll
+        capturedSetAll = options.cookies.setAll
+        return {
+          auth: { getUser: () => mockGetUser() },
+          from: (...args: unknown[]) => mockFrom(...args),
+        }
+      }
+    )
+
+    setupAuth('super_admin')
+    await createTenant('Test', 'active')
+
+    expect(capturedGetAll).toBeDefined()
+    const result = capturedGetAll!()
+    expect(result).toEqual([{ name: 'test', value: '123' }])
+    expect(mockGetAll).toHaveBeenCalled()
+    expect(capturedSetAll).toBeDefined()
+    capturedSetAll!([])
+  })
+})

@@ -1,6 +1,6 @@
 # Bill App — Project Context
 
-> **Last Updated**: 2026-09-05
+> **Last Updated**: 2026-11-07
 > **Current Version**: V1 (Core Billing & Inventory) — In Progress
 > **Conversation ID**: `96716635-c92e-4241-acce-3de0ac6f8da3`
 
@@ -133,6 +133,55 @@ bill/
 
 ---
 
+## Testing & Coverage Reference
+
+### Commands
+
+```bash
+npm run test            # Vitest watch mode
+npm run test:run        # Single full-suite run
+npm run test:coverage   # Single full-suite run with V8 coverage
+```
+
+Tests live under `src/__tests__/` and use Vitest with `vite-tsconfig-paths`.
+`src/__tests__/setup.ts` initializes test environment variables and resets mocks;
+`src/__tests__/__mocks__/supabase.ts` contains reusable Supabase mock utilities.
+API route tests call handlers directly with `NextRequest` and mocked Supabase
+clients, so they do not exercise a live Supabase instance or full middleware
+request pipeline.
+
+### Current verified baseline
+
+As of 2026-11-07, `npm run test:coverage` passes **137 tests across 9 test files**.
+All **12 instrumented source files** have 100% statement, branch, function, and
+line coverage (360/360 statements, 234/234 branches, 39/39 functions, 346/346
+lines).
+
+| Test file | Main coverage |
+|-----------|---------------|
+| `src/__tests__/middleware.test.ts` | Authentication routing, system/tenant roles, forwarded tenant headers, matcher exclusions, cookie refresh and missing-role fallback |
+| `src/__tests__/actions/admin-actions.test.ts` | Super-admin authorization, tenant/member CRUD, database error mapping, cache revalidation and cookie callbacks |
+| `src/__tests__/actions/soft-delete.test.ts` | Table allowlist, soft-delete update/path mapping, cookie callbacks and database/RLS error propagation |
+| `src/__tests__/api/health.test.ts` | Health endpoint responses |
+| `src/__tests__/api/expenses.test.ts` | Expense list/create validation, tenant requirement, database errors and unexpected failures |
+| `src/__tests__/api/invoices.test.ts` | Invoice list/create, totals/defaults, stock and party updates, rollback and error fallbacks |
+| `src/__tests__/api/invoices-id.test.ts` | Invoice retrieval/deletion, stock/balance reversion and missing/error cases |
+| `src/__tests__/api/items.test.ts` | Item CRUD, opening-stock adjustments, stock adjustment success/failure paths |
+| `src/__tests__/api/parties.test.ts` | Party list/filter/create/update/delete and linked-invoice/error paths |
+
+Authorization for `softDeleteRecord` is enforced by database RLS; the action
+does not independently inspect a user's tenant role. Its tests therefore verify
+that successful updates are revalidated and that database RLS errors are
+returned, rather than treating a mocked role label as authorization.
+
+New edge cases added while closing uncovered coverage included Supabase/client
+and request parsing failures, invoice/item/party records disappearing between
+queries, database update failures, cookie getter callbacks, tenant-header
+forwarding, and generic error-message fallbacks. Keep these cases aligned with
+the route/action behavior when those implementations change.
+
+---
+
 ## Future Roadmap: Advanced Auth & RBAC
 1. **Granular Permissions (Custom Roles)**: Instead of rigid enums, allow Tenant Admins to create custom roles (e.g., "Cashier") with specific boolean toggles (Can create invoice, Can delete items, Can view reports).
 2. **User Invite Email Flow**: Transition from UUID-based assignment to a magic link email invitation flow, allowing new workers to seamlessly join a tenant.
@@ -140,4 +189,3 @@ bill/
 4. **Tenant MFA Enforcement**: Allow Tenant Admins to mandate that all workers enable Two-Factor Authentication (2FA) via Supabase.
 5. **Super Admin Impersonation Mode**: Allow Super Admins to instantly "Login As" a specific tenant to debug issues and see exactly what the user sees.
 6. **API Key Management**: Allow tenants to generate scoped API keys for external POS or E-commerce integrations.
-

@@ -1,7 +1,7 @@
 /**
  * Tests: src/app/actions/soft-delete.ts
  *
- * Covers test IDs: S-01 → S-10
+ * Covers test IDs: S-01 → S-14
  *
  * Scenarios:
  *  - S-01: Soft delete 'invoices' -> sets deleted_at, revalidates '/sales'
@@ -15,11 +15,25 @@
  *  - S-08: Non-existent ID (no rows updated, but no error thrown by DB) -> { success: true }
  *  - S-09: Database error (e.g. trigger / RLS error) returns { error: error.message }
  *  - S-10: Path revalidation mapping accuracy
+ *  - S-11: Cookie getAll/setAll callbacks use the cookie store
+ *  - S-12/S-14: Successful updates return success and revalidate the target path
+ *  - S-13: A database RLS rejection is returned without revalidation
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { revalidatePath } from 'next/cache'
 import { softDeleteRecord } from '@/app/actions/soft-delete'
+
+type CookieToSet = {
+  name: string
+  value: string
+  options?: { path?: string }
+}
+
+type CookieAdapter = {
+  getAll: () => { name: string; value: string }[]
+  setAll: (cookiesToSet: CookieToSet[]) => void
+}
 
 // Mock next/headers
 vi.mock('next/headers', () => ({
@@ -68,7 +82,7 @@ describe('softDeleteRecord Action', () => {
   // S-01
   it('S-01: Soft-deleting an invoice revalidates /sales and updates deleted_at', async () => {
     let capturedUpdate: Record<string, unknown> | null = null
-    mockFrom = vi.fn().mockImplementation((table: string) => {
+    mockFrom = vi.fn().mockImplementation(() => {
       const chain = makeChain({ data: null, error: null })
       chain.update = vi.fn().mockImplementation((payload) => {
         capturedUpdate = payload
@@ -172,5 +186,73 @@ describe('softDeleteRecord Action', () => {
     expect(revalidatePath).toHaveBeenCalledWith('/items')
     expect(revalidatePath).not.toHaveBeenCalledWith('/sales')
   })
-})
 
+  // S-11
+  it('S-11: Cookie setAll callback propagates cookies to the cookie store (lines 16-20)', async () => {
+    const mockCookieSet = vi.fn()
+    const mockCookieGetAll = vi.fn().mockReturnValue([{ name: 'existing', value: 'cookie' }])
+    const { cookies: mockCookies } = await import('next/headers')
+    ;(mockCookies as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getAll: mockCookieGetAll,
+      set: mockCookieSet,
+    })
+
+    const { createServerClient } = await import('@supabase/ssr')
+    let capturedSetAll: CookieAdapter['setAll'] | null = null
+    let capturedGetAll: (() => { name: string; value: string }[]) | null = null
+    ;(createServerClient as ReturnType<typeof vi.fn>).mockImplementation(
+      (url: string, key: string, options: { cookies: CookieAdapter }) => {
+        capturedSetAll = options.cookies.setAll
+        capturedGetAll = options.cookies.getAll
+        return { from: (...args: unknown[]) => mockFrom(...args) }
+      }
+    )
+
+    mockFrom = vi.fn().mockReturnValue(makeChain({ data: null, error: null }))
+    await softDeleteRecord('items', 'item-123')
+
+    expect(capturedSetAll).toBeDefined()
+    expect(capturedGetAll).toBeDefined()
+    expect(capturedGetAll!()).toEqual([{ name: 'existing', value: 'cookie' }])
+    expect(mockCookieGetAll).toHaveBeenCalled()
+    capturedSetAll!([
+      { name: 'sb-access-token', value: 'token-val', options: { path: '/' } },
+    ])
+    expect(mockCookieSet).toHaveBeenCalledWith('sb-access-token', 'token-val', { path: '/' })
+  })
+
+  // S-12
+  it('S-12: Soft delete succeeds when the database allows the update', async () => {
+    mockFrom = vi.fn().mockReturnValue(makeChain({ data: null, error: null }))
+
+    const res = await softDeleteRecord('parties', 'party-ta-1')
+
+    expect(res).toEqual({ success: true })
+    expect(mockFrom).toHaveBeenCalledWith('parties')
+    expect(revalidatePath).toHaveBeenCalledWith('/parties')
+  })
+
+  // S-13
+  it('S-13: Propagates the database RLS rejection for a worker soft delete', async () => {
+    mockFrom = vi.fn().mockReturnValue(
+      makeChain({ data: null, error: { message: 'Only tenant_admin can soft-delete' } })
+    )
+
+    const res = await softDeleteRecord('expenses', 'exp-worker-1')
+
+    expect(res).toEqual({ error: 'Only tenant_admin can soft-delete' })
+    expect(mockFrom).toHaveBeenCalledWith('expenses')
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  // S-14
+  it('S-14: Soft delete succeeds when the database allows an invoice update', async () => {
+    mockFrom = vi.fn().mockReturnValue(makeChain({ data: null, error: null }))
+
+    const res = await softDeleteRecord('invoices', 'inv-sa-1')
+
+    expect(res).toEqual({ success: true })
+    expect(mockFrom).toHaveBeenCalledWith('invoices')
+    expect(revalidatePath).toHaveBeenCalledWith('/sales')
+  })
+})

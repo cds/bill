@@ -1,7 +1,7 @@
 /**
  * Tests: /api/items, /api/items/[id], and /api/items/[id]/adjust
  *
- * Covers test IDs: IT-01 → IT-23
+ * Covers test IDs: IT-01 → IT-23d
  *
  * Scenarios:
  *  - GET /api/items: list all items, search query with ilike, database error handling
@@ -156,6 +156,35 @@ describe('POST /api/items', () => {
     expect(tablesCalled).toContain('stock_adjustments')
   })
 
+  it('IT-04b: Still returns the created item when opening stock adjustment recording fails', async () => {
+    const createdItem = {
+      id: ITEM_ID,
+      name: 'Server Rack',
+      opening_stock: 10,
+      current_stock: 10,
+      tenant_id: TENANT_ID,
+    }
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'items') return makeChain({ data: createdItem, error: null })
+      if (table === 'stock_adjustments') {
+        return makeChain({ data: null, error: { message: 'Adjustment insert failed' } })
+      }
+      return makeChain({ data: null, error: null })
+    })
+
+    const req = new NextRequest('http://localhost/api/items', {
+      method: 'POST',
+      headers: { 'x-tenant-id': TENANT_ID },
+      body: JSON.stringify({ name: 'Server Rack', opening_stock: 10 }),
+    })
+    const res = await createItem(req)
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body).toEqual(createdItem)
+    expect(mockFrom).toHaveBeenCalledWith('stock_adjustments')
+  })
+
   // IT-05
   it('IT-05: Creates item with opening_stock = 0 without stock_adjustments', async () => {
     const createdItem = {
@@ -242,9 +271,8 @@ describe('PATCH /api/items/[id]', () => {
   // IT-11
   it('IT-11: Updates basic fields without touching stock if opening_stock unchanged', async () => {
     const currentItem = { id: ITEM_ID, opening_stock: 10, current_stock: 10 }
-    const updatedItem = { id: ITEM_ID, name: 'Updated Adapter', opening_stock: 10, current_stock: 10 }
 
-    mockFrom = vi.fn().mockImplementation((table: string) => {
+    mockFrom = vi.fn().mockImplementation(() => {
       // First call: select currentItem
       // Second call: update
       return makeChain({ data: currentItem, error: null })
@@ -322,6 +350,26 @@ describe('PATCH /api/items/[id]', () => {
 
     expect(res.status).toBe(500)
     expect(body.error).toBe('Fetch before update failed')
+  })
+
+  it('IT-14b: Returns 500 when the item update fails after a successful fetch', async () => {
+    let queryCount = 0
+    mockFrom = vi.fn().mockImplementation(() => {
+      queryCount += 1
+      return queryCount === 1
+        ? makeChain({ data: { opening_stock: 10, current_stock: 15 }, error: null })
+        : makeChain({ data: null, error: { message: 'Item update failed' } })
+    })
+
+    const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'Updated Item' }),
+    })
+    const res = await updateItem(req, { params: Promise.resolve({ id: ITEM_ID }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Item update failed')
   })
 })
 
@@ -475,5 +523,47 @@ describe('POST /api/items/[id]/adjust', () => {
 
     expect(res.status).toBe(500)
     expect(body.error).toBe('Failed to record adjustment')
+  })
+
+  it('IT-23c: Returns 500 when the stock update fails after recording the adjustment', async () => {
+    let itemQueryCount = 0
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'items') {
+        itemQueryCount += 1
+        return itemQueryCount === 1
+          ? makeChain({ data: { current_stock: 50 }, error: null })
+          : makeChain({ data: null, error: { message: 'Stock update failed' } })
+      }
+      return makeChain({ data: null, error: null })
+    })
+
+    const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}/adjust`, {
+      method: 'POST',
+      headers: { 'x-tenant-id': TENANT_ID },
+      body: JSON.stringify({ type: 'add', quantity: 5, date: '2026-10-18' }),
+    })
+    const res = await adjustStock(req, { params: Promise.resolve({ id: ITEM_ID }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Failed to update stock')
+    expect(mockFrom).toHaveBeenCalledWith('stock_adjustments')
+  })
+
+  it('IT-23d: Returns 500 when Supabase throws while fetching the item', async () => {
+    mockFrom = vi.fn().mockImplementation(() => {
+      throw new Error('Database client failed')
+    })
+
+    const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}/adjust`, {
+      method: 'POST',
+      headers: { 'x-tenant-id': TENANT_ID },
+      body: JSON.stringify({ type: 'add', quantity: 5, date: '2026-10-18' }),
+    })
+    const res = await adjustStock(req, { params: Promise.resolve({ id: ITEM_ID }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Internal server error')
   })
 })

@@ -1,7 +1,7 @@
 /**
  * Tests: GET /api/invoices/[id]  and  DELETE /api/invoices/[id]
  *
- * Covers test IDs: I-17 → I-25
+ * Covers test IDs: I-17 → I-29
  *
  * Scenarios:
  *  - I-17: Get existing invoice belonging to tenant -> 200 with merged items
@@ -13,6 +13,10 @@
  *  - I-23: Delete invoice when fetch fails (cross-tenant / non-existent) -> 500 error
  *  - I-24: Delete invoice when delete query fails -> 500 error
  *  - I-25: Worker caller invokes DELETE -> verifies handler executes
+ *  - I-26: Invoice-items query error during deletion -> 500 error
+ *  - I-27: Null invoice-items result -> delete succeeds without stock reversal
+ *  - I-28: Missing item/party rows -> stock and balance updates are skipped
+ *  - I-29: Missing error message -> fallback delete error is returned
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -219,8 +223,8 @@ describe('DELETE /api/invoices/[id]', () => {
     expect(tablesCalled).not.toContain('parties')
   })
 
-  // I-23 & I-24
-  it('I-23 & I-24: Returns 500 when invoice lookup fails or invoice delete fails', async () => {
+  // I-23
+  it('I-23: Returns 500 when invoice lookup fails', async () => {
     mockFrom = vi.fn().mockImplementation((table: string) => {
       if (table === 'invoices') {
         return makeChain({ data: null, error: { message: 'Database query error' } })
@@ -237,6 +241,129 @@ describe('DELETE /api/invoices/[id]', () => {
 
     expect(res.status).toBe(500)
     expect(body.error).toBe('Database query error')
+  })
+
+  // I-24
+  it('I-24: Returns 500 when invoice deletion fails', async () => {
+    const mockInvoice = {
+      id: INVOICE_ID,
+      payment_type: 'cash',
+      balance_due: 0,
+    }
+    let invoiceQueryCount = 0
+
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'invoices') {
+        invoiceQueryCount += 1
+        return invoiceQueryCount === 1
+          ? makeChain({ data: mockInvoice, error: null })
+          : makeChain({ data: null, error: { message: 'Invoice delete failed' } })
+      }
+      if (table === 'invoice_items') return makeChain({ data: [], error: null })
+      return makeChain({ data: null, error: null })
+    })
+
+    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
+      method: 'DELETE',
+    })
+    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Invoice delete failed')
+  })
+
+  it('I-26: Returns 500 when fetching invoice items for deletion fails', async () => {
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'invoices') {
+        return makeChain({
+          data: { id: INVOICE_ID, payment_type: 'cash', balance_due: 0 },
+          error: null,
+        })
+      }
+      if (table === 'invoice_items') {
+        return makeChain({ data: null, error: { message: 'Invoice items fetch failed' } })
+      }
+      return makeChain({ data: null, error: null })
+    })
+
+    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
+      method: 'DELETE',
+    })
+    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Invoice items fetch failed')
+  })
+
+  it('I-27: Deletes the invoice when the invoice-items query returns no rows', async () => {
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'invoices') {
+        return makeChain({
+          data: { id: INVOICE_ID, payment_type: 'cash', balance_due: 0 },
+          error: null,
+        })
+      }
+      if (table === 'invoice_items') return makeChain({ data: null, error: null })
+      return makeChain({ data: null, error: null })
+    })
+
+    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
+      method: 'DELETE',
+    })
+    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(mockFrom).toHaveBeenCalledWith('invoices')
+  })
+
+  it('I-28: Skips stock and balance updates when related records no longer exist', async () => {
+    const mockInvoice = {
+      id: INVOICE_ID,
+      party_id: PARTY_ID,
+      payment_type: 'credit',
+      balance_due: 100,
+    }
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
+      if (table === 'invoice_items') {
+        return makeChain({
+          data: [{ item_id: ITEM_ID, quantity: 2 }],
+          error: null,
+        })
+      }
+      if (table === 'items' || table === 'parties') {
+        return makeChain({ data: null, error: null })
+      }
+      return makeChain({ data: null, error: null })
+    })
+
+    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
+      method: 'DELETE',
+    })
+    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body).toEqual({ success: true })
+    expect(mockFrom.mock.calls.filter(([table]: [string]) => table === 'items')).toHaveLength(1)
+    expect(mockFrom.mock.calls.filter(([table]: [string]) => table === 'parties')).toHaveLength(1)
+  })
+
+  it('I-29: Uses the fallback error message when deletion throws without a message', async () => {
+    mockFrom = vi.fn().mockReturnValue(
+      makeChain({ data: null, error: { code: 'UNKNOWN' } })
+    )
+
+    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
+      method: 'DELETE',
+    })
+    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Failed to delete invoice')
   })
 
   // I-25
@@ -267,4 +394,3 @@ describe('DELETE /api/invoices/[id]', () => {
     expect(body.success).toBe(true)
   })
 })
-

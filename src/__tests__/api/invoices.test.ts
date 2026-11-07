@@ -1,7 +1,7 @@
 /**
  * Tests: GET /api/invoices  and  POST /api/invoices
  *
- * Covers test IDs: I-01 → I-16
+ * Covers test IDs: I-01 → I-16f
  *
  * Strategy:
  *  - Mock `@/lib/supabase/server` so no real DB/network calls are made.
@@ -371,5 +371,116 @@ describe('POST /api/invoices', () => {
     // Should have at least 2 calls to 'invoices': insert + delete (rollback)
     expect(invoiceCalls.length).toBeGreaterThanOrEqual(2)
   })
-})
 
+  it('I-16b: Returns 500 when invoice creation fails', async () => {
+    mockFrom = vi.fn().mockReturnValue(
+      makeChain({ data: null, error: { message: 'Invoice insert failed' } })
+    )
+
+    const { POST } = await import('@/app/api/invoices/route')
+    const res = await POST(makePostRequest(validBody))
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Invoice insert failed')
+  })
+
+  it('I-16c: Defaults omitted payment type and method to cash', async () => {
+    let insertPayload: Record<string, unknown> | null = null
+    const mockInvoice = { id: INVOICE_ID, party_name: 'Acme Corp' }
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      const chain = makeChain({ data: mockInvoice, error: null })
+      if (table === 'invoices') {
+        chain.insert = vi.fn().mockImplementation((payload) => {
+          insertPayload = payload
+          return chain
+        })
+      }
+      return chain
+    })
+
+    const { POST } = await import('@/app/api/invoices/route')
+    const res = await POST(makePostRequest({
+      party_name: validBody.party_name,
+      items: validBody.items,
+    }))
+
+    expect(res.status).toBe(201)
+    expect(insertPayload).toMatchObject({
+      payment_type: 'cash',
+      payment_method: 'cash',
+    })
+  })
+
+  it('I-16d: Uses the generic error message when invoice creation throws without a message', async () => {
+    mockFrom = vi.fn().mockReturnValue(
+      makeChain({ data: null, error: { code: 'UNKNOWN' } })
+    )
+
+    const { POST } = await import('@/app/api/invoices/route')
+    const res = await POST(makePostRequest(validBody))
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('Internal Server Error')
+  })
+
+  it('I-16e: Skips stock updates when a tracked item no longer exists', async () => {
+    const mockInvoice = {
+      id: INVOICE_ID,
+      invoice_number: 'INV-006',
+      party_name: 'Acme Corp',
+      total_amount: 100,
+      balance_due: 0,
+      payment_type: 'cash',
+    }
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
+      if (table === 'items') return makeChain({ data: null, error: null })
+      return makeChain({ data: null, error: null })
+    })
+
+    const { POST } = await import('@/app/api/invoices/route')
+    const res = await POST(makePostRequest({
+      ...validBody,
+      items: [{
+        item_id: ITEM_ID,
+        item_name: 'Widget',
+        quantity: 2,
+        rate: 50,
+        unit: 'pcs',
+      }],
+    }))
+
+    expect(res.status).toBe(201)
+    const itemCalls = mockFrom.mock.calls.filter(([table]: [string]) => table === 'items')
+    expect(itemCalls).toHaveLength(1)
+  })
+
+  it('I-16f: Skips party balance update when the credit party no longer exists', async () => {
+    const mockInvoice = {
+      id: INVOICE_ID,
+      invoice_number: 'INV-007',
+      party_name: 'Missing Party',
+      total_amount: 100,
+      balance_due: 100,
+      payment_type: 'credit',
+    }
+    mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
+      if (table === 'parties') return makeChain({ data: null, error: null })
+      return makeChain({ data: null, error: null })
+    })
+
+    const { POST } = await import('@/app/api/invoices/route')
+    const res = await POST(makePostRequest({
+      ...validBody,
+      party_id: PARTY_ID,
+      payment_type: 'credit',
+    }))
+
+    expect(res.status).toBe(201)
+    const partyCalls = mockFrom.mock.calls.filter(([table]: [string]) => table === 'parties')
+    expect(partyCalls).toHaveLength(1)
+  })
+})

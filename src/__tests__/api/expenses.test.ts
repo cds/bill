@@ -1,7 +1,7 @@
 /**
  * Tests: GET /api/expenses and POST /api/expenses
  *
- * Covers test IDs: E-01 → E-06
+ * Covers test IDs: E-01 → E-10
  *
  * Scenarios:
  *  - GET /api/expenses:
@@ -12,11 +12,13 @@
  *      - E-04: Rejects missing required fields (date, category, amount, payment_mode) with 400
  *      - E-05: Missing x-tenant-id (Unauthenticated or Super User) returns 403
  *      - E-06: Verifies payment_status is always hardcoded/persisted as 'paid'
+ *      - E-09/E-10: Unexpected Supabase and request-body parse failures return 500
  *      - Postgres error 42501 maps to 403, generic DB error to 500
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { GET, POST } from '@/app/api/expenses/route'
 
 const TENANT_ID = 'tenant-uuid-111'
@@ -84,6 +86,16 @@ describe('GET /api/expenses', () => {
     expect(res.status).toBe(500)
     expect(body.error).toBe('Database read error')
   })
+
+  it('E-09: Returns 500 when creating the Supabase client throws', async () => {
+    vi.mocked(createClient).mockRejectedValueOnce(new Error('Supabase unavailable'))
+
+    const res = await GET()
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('An unexpected error occurred')
+  })
 })
 
 describe('POST /api/expenses', () => {
@@ -144,7 +156,6 @@ describe('POST /api/expenses', () => {
 
     mockFrom = vi.fn().mockImplementation(() => {
       const chain = makeChain({ data: createdExpense, error: null })
-      const origInsert = chain.insert as ReturnType<typeof vi.fn>
       chain.insert = vi.fn().mockImplementation((payload) => {
         capturedInsert = payload
         return chain
@@ -220,5 +231,18 @@ describe('POST /api/expenses', () => {
     expect(res.status).toBe(500)
     expect(body.error).toBe('Not null violation')
   })
-})
 
+  it('E-10: Returns 500 when the request body cannot be parsed', async () => {
+    const req = new NextRequest('http://localhost/api/expenses', {
+      method: 'POST',
+      headers: { 'x-tenant-id': TENANT_ID },
+      body: '{invalid-json',
+    })
+
+    const res = await POST(req)
+    const body = await res.json()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('An unexpected error occurred')
+  })
+})
