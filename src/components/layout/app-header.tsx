@@ -130,13 +130,23 @@ export function AppHeader({
         {/* Logout Button */}
         <div className="flex items-center gap-2">
           {systemRole === 'super_admin' && tenants.length > 0 && selectedTenantId && (
-            <TenantSwitcher tenants={tenants} selectedTenantId={selectedTenantId} />
+            <div className="hidden sm:block">
+              <TenantSwitcher tenants={tenants} selectedTenantId={selectedTenantId} />
+            </div>
           )}
           <Button variant="ghost" size="icon" onClick={handleSignOut} title="Sign Out">
             <LogOut className="w-5 h-5 text-muted-foreground hover:text-destructive" />
           </Button>
         </div>
       </div>
+      {systemRole === 'super_admin' && tenants.length > 0 && selectedTenantId && (
+        <div className="flex items-center gap-3 border-t px-4 py-2 sm:hidden">
+          <span className="shrink-0 text-xs font-medium text-muted-foreground">Viewing tenant</span>
+          <div className="min-w-0 flex-1">
+            <TenantSwitcher tenants={tenants} selectedTenantId={selectedTenantId} />
+          </div>
+        </div>
+      )}
     </header>
   );
 }

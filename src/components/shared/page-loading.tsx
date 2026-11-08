@@ -3,7 +3,13 @@
 import { useEffect, useState } from 'react';
 import { Clock3, LoaderCircle } from 'lucide-react';
 
-export function PageLoading() {
+export function PageLoading({
+  overlay = false,
+  message = 'Please wait while the page and data load.',
+}: {
+  overlay?: boolean;
+  message?: string;
+}) {
   const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
@@ -15,7 +21,7 @@ export function PageLoading() {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const progress = Math.min(90, Math.floor(elapsedMs / 100) * 10);
+  const progress = Math.min(90, 10 + Math.floor(elapsedMs / 750) * 10);
   const elapsedSeconds = (elapsedMs / 1000).toFixed(1);
   const process = progress < 30
     ? 'Preparing page'
@@ -25,10 +31,14 @@ export function PageLoading() {
 
   return (
     <section
-      className="flex min-h-[45vh] items-center justify-center px-4 py-12"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
+    className={
+      overlay
+        ? 'fixed inset-0 z-[100] flex items-center justify-center bg-background/75 px-4 py-12 backdrop-blur-sm'
+        : 'flex min-h-[45vh] items-center justify-center px-4 py-12'
+    }
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
     >
       <div className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-sm">
         <div className="mb-5 flex items-center gap-3">
@@ -38,7 +48,7 @@ export function PageLoading() {
           />
           <div>
             <p className="font-medium">{process}</p>
-            <p className="text-sm text-muted-foreground">Please wait while the page and data load.</p>
+            <p className="text-sm text-muted-foreground">{message}</p>
           </div>
         </div>
 
