@@ -6,12 +6,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const tenantId = request.headers.get('x-tenant-id');
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+  }
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('parties')
     .select('*')
     .eq('id', id)
+    .eq('tenant_id', tenantId)
     .single();
 
   if (error) {
@@ -29,13 +34,18 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const tenantId = request.headers.get('x-tenant-id');
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+  }
   const supabase = await createClient();
   const body = await request.json();
 
   const { data, error } = await supabase
     .from('parties')
-    .update(body)
+    .update({ ...body, tenant_id: tenantId })
     .eq('id', id)
+    .eq('tenant_id', tenantId)
     .select()
     .single();
 
@@ -51,6 +61,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const tenantId = request.headers.get('x-tenant-id');
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+  }
   const supabase = await createClient();
 
   // Check if party has invoices
@@ -58,6 +72,7 @@ export async function DELETE(
     .from('invoices')
     .select('id')
     .eq('party_id', id)
+    .eq('tenant_id', tenantId)
     .limit(1);
 
   if (invoicesError) {
@@ -71,7 +86,11 @@ export async function DELETE(
     );
   }
 
-  const { error } = await supabase.from('parties').delete().eq('id', id);
+  const { error } = await supabase
+    .from('parties')
+    .delete()
+    .eq('id', id)
+    .eq('tenant_id', tenantId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

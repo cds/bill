@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -24,11 +25,13 @@ export default async function PartyDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const tenantId = await getActiveTenantId();
 
   const { data: party, error: partyError } = await supabase
     .from('parties')
     .select('*')
     .eq('id', id)
+    .eq('tenant_id', tenantId)
     .single();
 
   if (partyError || !party) {
@@ -39,6 +42,7 @@ export default async function PartyDetailPage({
     .from('invoices')
     .select('*')
     .eq('party_id', id)
+    .eq('tenant_id', tenantId)
     .order('invoice_date', { ascending: false });
 
   const renderBalance = (balance: number) => {

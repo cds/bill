@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { ExpenseListClient } from '@/components/expenses/expense-list-client';
 
 export const metadata = {
@@ -8,10 +9,12 @@ export const metadata = {
 
 export default async function ExpensesPage() {
   const supabase = await createClient();
+  const tenantId = await getActiveTenantId();
 
   const { data: expenses, error } = await supabase
     .from('expenses')
     .select('*')
+    .eq('tenant_id', tenantId)
     .order('date', { ascending: false });
 
   if (error) {

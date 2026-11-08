@@ -1,14 +1,26 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return fallback;
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const tenantId = request.headers.get('x-tenant-id');
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+  }
   const supabase = await createClient();
 
   const { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
     .select('*')
     .eq('id', id)
+    .eq('tenant_id', tenantId)
     .single();
 
   if (invoiceError) {
@@ -18,7 +30,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { data: items, error: itemsError } = await supabase
     .from('invoice_items')
     .select('*')
-    .eq('invoice_id', id);
+    .eq('invoice_id', id)
+    .eq('tenant_id', tenantId);
 
   if (itemsError) {
     return NextResponse.json({ error: itemsError.message }, { status: 400 });
@@ -29,6 +42,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const tenantId = request.headers.get('x-tenant-id');
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+  }
   const supabase = await createClient();
 
   try {
@@ -37,6 +54,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       .from('invoices')
       .select('*')
       .eq('id', id)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (invoiceError) throw invoiceError;
@@ -44,7 +62,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const { data: items, error: itemsError } = await supabase
       .from('invoice_items')
       .select('*')
-      .eq('invoice_id', id);
+      .eq('invoice_id', id)
+      .eq('tenant_id', tenantId);
 
     if (itemsError) throw itemsError;
 
@@ -55,13 +74,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
           .from('items')
           .select('current_stock')
           .eq('id', item.item_id)
+          .eq('tenant_id', tenantId)
           .single();
           
         if (currentItem) {
           await supabase
             .from('items')
             .update({ current_stock: currentItem.current_stock + item.quantity })
-            .eq('id', item.item_id);
+            .eq('id', item.item_id)
+            .eq('tenant_id', tenantId);
         }
       }
     }
@@ -71,6 +92,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       .from('stock_adjustments')
       .delete()
       .eq('reference_id', id)
+      .eq('tenant_id', tenantId)
       .eq('type', 'sale');
 
     // 4. Revert party balance
@@ -79,13 +101,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         .from('parties')
         .select('balance')
         .eq('id', invoice.party_id)
+        .eq('tenant_id', tenantId)
         .single();
         
       if (party) {
         await supabase
           .from('parties')
           .update({ balance: party.balance - invoice.balance_due })
-          .eq('id', invoice.party_id);
+          .eq('id', invoice.party_id)
+          .eq('tenant_id', tenantId);
       }
     }
 
@@ -93,13 +117,17 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const { error: deleteError } = await supabase
       .from('invoices')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
 
     if (deleteError) throw deleteError;
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Invoice deletion error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to delete invoice' }, { status: 500 });
+    return NextResponse.json(
+      { error: getErrorMessage(error, 'Failed to delete invoice') },
+      { status: 500 }
+    );
   }
 }

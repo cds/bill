@@ -1,8 +1,12 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { ACTIVE_TENANT_COOKIE } from '@/lib/tenant-selection';
 
 export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete('x-tenant-id');
+  requestHeaders.delete('x-tenant-role');
+  requestHeaders.delete('x-system-role');
   
   let supabaseResponse = NextResponse.next({
     request: {
@@ -86,34 +90,73 @@ export async function middleware(request: NextRequest) {
 
     // 4. Resolve Tenant Context (For ALL users trying to access the dashboard, including Super Admins)
     if (!isSetupPage && !isAdminPage) {
-      if (!memberData) {
-        // If a super_admin has no tenant but tries to access the dashboard (/), redirect to /admin instead of setup
-        if (systemRole === 'super_admin' && pathname === '/') {
-          return NextResponse.redirect(new URL('/admin', request.url));
+      let tenantId = memberData?.tenant_id as string | undefined;
+      let tenantRole = memberData?.role as string | undefined;
+
+      if (systemRole === 'super_admin') {
+        const selectedTenantId = request.cookies.get(ACTIVE_TENANT_COOKIE)?.value;
+        if (selectedTenantId) {
+          const { data: selectedTenant, error: selectedTenantError } = await supabase
+            .from('tenants')
+            .select('id')
+            .eq('id', selectedTenantId)
+            .maybeSingle();
+
+          if (selectedTenantError) {
+            console.error('Failed to validate selected tenant:', selectedTenantError);
+            return NextResponse.json(
+              { error: 'Unable to validate the selected tenant' },
+              { status: 503 }
+            );
+          } else if (selectedTenant) {
+            tenantId = selectedTenant.id;
+          }
         }
 
-        // Otherwise redirect to onboarding/setup
-        return NextResponse.redirect(new URL('/setup', request.url));
-      } else {
-        // Inject tenant details into headers for Server Components
-        requestHeaders.set('x-tenant-id', memberData.tenant_id);
-        requestHeaders.set('x-tenant-role', memberData.role);
-        requestHeaders.set('x-system-role', systemRole);
-        
-        // Re-instantiate the response so Next.js sees the new request headers
-        const finalResponse = NextResponse.next({
-          request: {
-            headers: requestHeaders,
-          },
-        });
-        
-        // Preserve any session cookies that Supabase might have just refreshed
-        supabaseResponse.cookies.getAll().forEach((cookie) => {
-          finalResponse.cookies.set(cookie.name, cookie.value);
-        });
-        
-        supabaseResponse = finalResponse;
+        if (!tenantId) {
+          const { data: firstTenant, error: firstTenantError } = await supabase
+            .from('tenants')
+            .select('id')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (firstTenantError) {
+            console.error('Failed to resolve a default tenant for super admin:', firstTenantError);
+            return NextResponse.json(
+              { error: 'Unable to resolve a tenant for this dashboard' },
+              { status: 503 }
+            );
+          } else {
+            tenantId = firstTenant?.id;
+          }
+        }
+
+        tenantRole = 'super_admin';
       }
+
+      if (!tenantId) {
+        if (systemRole === 'super_admin') {
+          return NextResponse.redirect(new URL('/admin', request.url));
+        }
+        return NextResponse.redirect(new URL('/setup', request.url));
+      }
+
+      requestHeaders.set('x-tenant-id', tenantId);
+      requestHeaders.set('x-tenant-role', tenantRole ?? 'worker');
+      requestHeaders.set('x-system-role', systemRole);
+
+      const finalResponse = NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
+
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        finalResponse.cookies.set(cookie.name, cookie.value);
+      });
+
+      supabaseResponse = finalResponse;
     }
   }
 

@@ -8,8 +8,21 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { TenantSwitcher } from '@/components/layout/tenant-switcher';
 
-export function AppHeader({ userRole, systemRole }: { userRole?: string, systemRole?: string }) {
+type TenantOption = { id: string; name: string };
+
+export function AppHeader({
+  userRole,
+  systemRole,
+  tenants = [],
+  selectedTenantId,
+}: {
+  userRole?: string;
+  systemRole?: string;
+  tenants?: TenantOption[];
+  selectedTenantId?: string;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
@@ -115,7 +128,10 @@ export function AppHeader({ userRole, systemRole }: { userRole?: string, systemR
         </div>
 
         {/* Logout Button */}
-        <div>
+        <div className="flex items-center gap-2">
+          {systemRole === 'super_admin' && tenants.length > 0 && selectedTenantId && (
+            <TenantSwitcher tenants={tenants} selectedTenantId={selectedTenantId} />
+          )}
           <Button variant="ghost" size="icon" onClick={handleSignOut} title="Sign Out">
             <LogOut className="w-5 h-5 text-muted-foreground hover:text-destructive" />
           </Button>

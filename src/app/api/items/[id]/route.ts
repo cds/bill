@@ -6,12 +6,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const tenantId = request.headers.get('x-tenant-id')
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 })
+  }
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('items')
     .select('*')
     .eq('id', id)
+    .eq('tenant_id', tenantId)
     .single()
 
   if (error) {
@@ -26,6 +31,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const tenantId = request.headers.get('x-tenant-id')
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 })
+  }
   const supabase = await createClient()
   const body = await request.json()
 
@@ -34,13 +43,14 @@ export async function PATCH(
     .from('items')
     .select('opening_stock, current_stock')
     .eq('id', id)
+    .eq('tenant_id', tenantId)
     .single()
 
   if (fetchError) {
     return NextResponse.json({ error: fetchError.message }, { status: 500 })
   }
 
-  const updateData = { ...body }
+  const updateData = { ...body, tenant_id: tenantId }
 
   // If opening stock changed, adjust current stock
   if (body.opening_stock !== undefined && body.opening_stock !== currentItem.opening_stock) {
@@ -52,6 +62,7 @@ export async function PATCH(
     .from('items')
     .update(updateData)
     .eq('id', id)
+    .eq('tenant_id', tenantId)
     .select()
     .single()
 
@@ -67,12 +78,17 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const tenantId = request.headers.get('x-tenant-id')
+  if (!tenantId) {
+    return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 })
+  }
   const supabase = await createClient()
 
   const { error } = await supabase
     .from('items')
     .delete()
     .eq('id', id)
+    .eq('tenant_id', tenantId)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

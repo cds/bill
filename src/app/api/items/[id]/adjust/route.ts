@@ -25,6 +25,7 @@ export async function POST(
       .from('items')
       .select('current_stock')
       .eq('id', id)
+      .eq('tenant_id', tenantId)
       .single()
 
     if (itemError || !item) {
@@ -58,6 +59,7 @@ export async function POST(
       .from('items')
       .update({ current_stock: newStock })
       .eq('id', id)
+      .eq('tenant_id', tenantId)
 
     if (updateError) {
       console.error('Error updating item stock:', updateError)

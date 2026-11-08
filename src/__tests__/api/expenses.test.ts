@@ -17,12 +17,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
+import { NextRequest as BaseNextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { GET, POST } from '@/app/api/expenses/route'
 
 const TENANT_ID = 'tenant-uuid-111'
 const EXPENSE_ID = 'expense-uuid-555'
+
+class NextRequest extends BaseNextRequest {
+  constructor(input: string | URL, init?: RequestInit) {
+    const headers = new Headers(init?.headers)
+    if (!headers.has('x-tenant-id')) headers.set('x-tenant-id', TENANT_ID)
+    super(input, { ...init, headers })
+  }
+}
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockResolvedValue({
@@ -68,7 +76,7 @@ describe('GET /api/expenses', () => {
     ]
     mockFrom = vi.fn().mockReturnValue(makeChain({ data: mockExpenses, error: null }))
 
-    const res = await GET()
+    const res = await GET(new NextRequest('http://localhost/api/expenses'))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -80,7 +88,7 @@ describe('GET /api/expenses', () => {
   it('E-02: Returns 500 when Supabase query returns an error', async () => {
     mockFrom = vi.fn().mockReturnValue(makeChain({ data: null, error: { message: 'Database read error' } }))
 
-    const res = await GET()
+    const res = await GET(new NextRequest('http://localhost/api/expenses'))
     const body = await res.json()
 
     expect(res.status).toBe(500)
@@ -90,7 +98,7 @@ describe('GET /api/expenses', () => {
   it('E-09: Returns 500 when creating the Supabase client throws', async () => {
     vi.mocked(createClient).mockRejectedValueOnce(new Error('Supabase unavailable'))
 
-    const res = await GET()
+    const res = await GET(new NextRequest('http://localhost/api/expenses'))
     const body = await res.json()
 
     expect(res.status).toBe(500)
@@ -105,7 +113,7 @@ describe('POST /api/expenses', () => {
 
   // E-05
   it('E-05: Missing x-tenant-id (Unauthenticated or Super User) returns 403', async () => {
-    const req = new NextRequest('http://localhost/api/expenses', {
+    const req = new BaseNextRequest('http://localhost/api/expenses', {
       method: 'POST',
       body: JSON.stringify({
         date: '2026-10-18',

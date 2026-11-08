@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { formatCurrency } from '@/lib/utils';
 import { StatCard } from '@/components/shared/stat-card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,7 @@ import {
 
 export default async function DashboardPage() {
   const supabase = await createClient();
+  const tenantId = await getActiveTenantId();
 
   // Fetch dashboard metrics
   const [
@@ -29,10 +31,10 @@ export default async function DashboardPage() {
     { data: invoices },
     { data: expenses },
   ] = await Promise.all([
-    supabase.from('items').select('id, name, current_stock, purchase_price, low_stock_threshold, unit'),
-    supabase.from('parties').select('id, type, balance'),
-    supabase.from('invoices').select('invoice_date, total_amount, amount_paid'),
-    supabase.from('expenses').select('amount, payment_status, payment_mode'),
+    supabase.from('items').select('id, name, current_stock, purchase_price, low_stock_threshold, unit').eq('tenant_id', tenantId),
+    supabase.from('parties').select('id, type, balance').eq('tenant_id', tenantId),
+    supabase.from('invoices').select('invoice_date, total_amount, amount_paid').eq('tenant_id', tenantId),
+    supabase.from('expenses').select('amount, payment_status, payment_mode').eq('tenant_id', tenantId),
   ]);
 
   // Calculate stats
@@ -199,9 +201,11 @@ export default async function DashboardPage() {
 
 async function RecentTransactions() {
   const supabase = await createClient();
+  const tenantId = await getActiveTenantId();
   const { data: invoices } = await supabase
     .from('invoices')
     .select('id, invoice_number, invoice_date, party_name, total_amount, balance_due, amount_paid')
+    .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
     .limit(5);
 

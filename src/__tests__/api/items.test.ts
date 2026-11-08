@@ -17,13 +17,21 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
+import { NextRequest as BaseNextRequest } from 'next/server'
 import { GET as getItems, POST as createItem } from '@/app/api/items/route'
 import { GET as getItemById, PATCH as updateItem, DELETE as deleteItem } from '@/app/api/items/[id]/route'
 import { POST as adjustStock } from '@/app/api/items/[id]/adjust/route'
 
 const TENANT_ID = 'tenant-uuid-111'
 const ITEM_ID = 'item-uuid-333'
+
+class NextRequest extends BaseNextRequest {
+  constructor(input: string | URL, init?: RequestInit) {
+    const headers = new Headers(init?.headers)
+    if (!headers.has('x-tenant-id')) headers.set('x-tenant-id', TENANT_ID)
+    super(input, { ...init, headers })
+  }
+}
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockResolvedValue({
@@ -69,7 +77,7 @@ describe('GET /api/items', () => {
     ]
     mockFrom = vi.fn().mockReturnValue(makeChain({ data: mockItems, error: null }))
 
-    const req = new NextRequest('http://localhost/api/items', {
+    const req = new BaseNextRequest('http://localhost/api/items', {
       headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'worker' },
     })
     const res = await getItems(req)
@@ -113,7 +121,7 @@ describe('POST /api/items', () => {
 
   // IT-06
   it('IT-06: Missing x-tenant-id returns 403', async () => {
-    const req = new NextRequest('http://localhost/api/items', {
+    const req = new BaseNextRequest('http://localhost/api/items', {
       method: 'POST',
       body: JSON.stringify({ name: 'Switch' }),
     })
@@ -413,7 +421,7 @@ describe('POST /api/items/[id]/adjust', () => {
 
   // IT-21
   it('IT-21: Missing x-tenant-id returns 403', async () => {
-    const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}/adjust`, {
+    const req = new BaseNextRequest(`http://localhost/api/items/${ITEM_ID}/adjust`, {
       method: 'POST',
       body: JSON.stringify({ type: 'add', quantity: 5, date: '2026-10-18' }),
     })

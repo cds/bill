@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { createClient } from '@/lib/supabase/server';
+import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { DateRangeFilter } from '@/components/reports/date-range-filter';
@@ -21,11 +22,13 @@ export default async function PartyStatementPage({
   const party_id = typeof params.party_id === 'string' ? params.party_id : undefined;
 
   const supabase = await createClient();
+  const tenantId = await getActiveTenantId();
 
   // Fetch all parties for the dropdown
   const { data: parties } = await supabase
     .from('parties')
     .select('id, name')
+    .eq('tenant_id', tenantId)
     .order('name');
 
   // Fetch party details if selected
@@ -39,6 +42,7 @@ export default async function PartyStatementPage({
       .from('parties')
       .select('*')
       .eq('id', party_id)
+      .eq('tenant_id', tenantId)
       .single();
     
     partyDetails = partyData;
@@ -48,6 +52,7 @@ export default async function PartyStatementPage({
       .from('invoices')
       .select('total_amount, amount_paid')
       .eq('party_id', party_id)
+      .eq('tenant_id', tenantId)
       .lt('invoice_date', start);
 
     openingBalance = previousInvoices?.reduce((sum, inv) => sum + (inv.total_amount - inv.amount_paid), 0) || 0;
@@ -57,6 +62,7 @@ export default async function PartyStatementPage({
       .from('invoices')
       .select('*')
       .eq('party_id', party_id)
+      .eq('tenant_id', tenantId)
       .gte('invoice_date', start)
       .lte('invoice_date', end)
       .order('invoice_date', { ascending: true })

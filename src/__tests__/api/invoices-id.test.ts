@@ -20,13 +20,21 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
+import { NextRequest as BaseNextRequest } from 'next/server'
 import { GET, DELETE } from '@/app/api/invoices/[id]/route'
 
 const TENANT_ID = 'tenant-uuid-111'
 const PARTY_ID = 'party-uuid-222'
 const ITEM_ID = 'item-uuid-333'
 const INVOICE_ID = 'invoice-uuid-444'
+
+class NextRequest extends BaseNextRequest {
+  constructor(input: string | URL, init?: RequestInit) {
+    const headers = new Headers(init?.headers)
+    if (!headers.has('x-tenant-id')) headers.set('x-tenant-id', TENANT_ID)
+    super(input, { ...init, headers })
+  }
+}
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockResolvedValue({

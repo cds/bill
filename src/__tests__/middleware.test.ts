@@ -74,6 +74,7 @@ function setupSession(options: {
   authenticated: boolean
   systemRole?: 'super_admin' | 'user'
   tenantMembership?: { tenant_id: string; role: string } | null
+  tenant?: { id: string } | null
 }) {
   if (!options.authenticated) {
     mockGetUser = vi.fn().mockResolvedValue({ data: { user: null }, error: null })
@@ -98,6 +99,9 @@ function setupSession(options: {
         data: options.tenantMembership ?? null,
         error: null,
       })
+    }
+    if (table === 'tenants') {
+      return makeChain({ data: options.tenant ?? null, error: null })
     }
     return makeChain({ data: null, error: null })
   })
@@ -351,7 +355,7 @@ describe('Next.js Middleware Routing & RBAC', () => {
   })
 
   // M-18
-  it('M-18: Super admin with no tenant visiting /items is redirected to /setup', async () => {
+  it('M-18: Super admin with no available tenant visiting /items is redirected to /admin', async () => {
     setupSession({
       authenticated: true,
       systemRole: 'super_admin',
@@ -362,7 +366,28 @@ describe('Next.js Middleware Routing & RBAC', () => {
     const res = await middleware(req)
 
     expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toBe('http://localhost/setup')
+    expect(res.headers.get('location')).toBe('http://localhost/admin')
+  })
+
+  it('Injects the selected tenant context for a super admin with no membership', async () => {
+    setupSession({
+      authenticated: true,
+      systemRole: 'super_admin',
+      tenantMembership: null,
+      tenant: { id: 'selected-tenant-id' },
+    })
+
+    const req = new NextRequest('http://localhost/items', {
+      headers: { 'x-tenant-id': 'forged-tenant-id' },
+    })
+    req.cookies.set('active_tenant_id', 'selected-tenant-id')
+
+    const res = await middleware(req)
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('x-middleware-request-x-tenant-id')).toBe('selected-tenant-id')
+    expect(res.headers.get('x-middleware-request-x-tenant-role')).toBe('super_admin')
+    expect(res.headers.get('x-middleware-request-x-system-role')).toBe('super_admin')
   })
 
   // M-19

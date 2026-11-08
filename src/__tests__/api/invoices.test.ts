@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
+import { NextRequest as BaseNextRequest } from 'next/server'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -26,9 +26,17 @@ const PARTY_ID  = 'party-uuid-222'
 const ITEM_ID   = 'item-uuid-333'
 const INVOICE_ID = 'invoice-uuid-444'
 
+class NextRequest extends BaseNextRequest {
+  constructor(input: string | URL, init?: RequestInit) {
+    const headers = new Headers(init?.headers)
+    if (!headers.has('x-tenant-id')) headers.set('x-tenant-id', TENANT_ID)
+    super(input, { ...init, headers })
+  }
+}
+
 /** Build a NextRequest for POST /api/invoices */
 function makePostRequest(body: object, headers: Record<string, string> = { 'x-tenant-id': TENANT_ID }) {
-  return new NextRequest('http://localhost/api/invoices', {
+  return new BaseNextRequest('http://localhost/api/invoices', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
@@ -299,6 +307,7 @@ describe('POST /api/invoices', () => {
 
     mockFrom = vi.fn().mockImplementation((table: string) => {
       if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
+      if (table === 'parties') return makeChain({ data: { id: PARTY_ID }, error: null })
       return makeChain({ data: [], error: null })
     })
 
@@ -310,12 +319,10 @@ describe('POST /api/invoices', () => {
     }))
 
     expect(res.status).toBe(201)
-    // parties.update should NOT be called for cash
-    const partiesUpdateCalls = mockFrom.mock.calls
+    // The party is validated, but its balance is not updated for cash sales.
+    const partiesCalls = mockFrom.mock.calls
       .filter(([t]: [string]) => t === 'parties')
-    // Either no parties calls, or only select (no update for cash)
-    // Cash route never enters the credit block — so parties shouldn't be touched at all
-    expect(partiesUpdateCalls.length).toBe(0)
+    expect(partiesCalls.length).toBe(1)
   })
 
   // I-07 with tracked items — stock decremented + stock_adjustments inserted
@@ -326,9 +333,16 @@ describe('POST /api/invoices', () => {
       balance_due: 0, payment_type: 'cash', tenant_id: TENANT_ID,
     }
 
+    let itemQueryCount = 0
     mockFrom = vi.fn().mockImplementation((table: string) => {
       if (table === 'invoices')           return makeChain({ data: mockInvoice, error: null })
-      if (table === 'items')              return makeChain({ data: { current_stock: 10 }, error: null })
+      if (table === 'items') {
+        itemQueryCount += 1
+        return makeChain({
+          data: itemQueryCount === 1 ? [{ id: ITEM_ID }] : { current_stock: 10 },
+          error: null,
+        })
+      }
       if (table === 'stock_adjustments')  return makeChain({ data: [], error: null })
       return makeChain({ data: [], error: null })
     })
@@ -452,7 +466,7 @@ describe('POST /api/invoices', () => {
       }],
     }))
 
-    expect(res.status).toBe(201)
+    expect(res.status).toBe(400)
     const itemCalls = mockFrom.mock.calls.filter(([table]: [string]) => table === 'items')
     expect(itemCalls).toHaveLength(1)
   })
@@ -479,7 +493,7 @@ describe('POST /api/invoices', () => {
       payment_type: 'credit',
     }))
 
-    expect(res.status).toBe(201)
+    expect(res.status).toBe(400)
     const partyCalls = mockFrom.mock.calls.filter(([table]: [string]) => table === 'parties')
     expect(partyCalls).toHaveLength(1)
   })

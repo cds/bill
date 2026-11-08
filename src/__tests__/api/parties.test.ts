@@ -15,12 +15,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
+import { NextRequest as BaseNextRequest } from 'next/server'
 import { GET as getParties, POST as createParty } from '@/app/api/parties/route'
 import { GET as getPartyById, PATCH as updateParty, DELETE as deleteParty } from '@/app/api/parties/[id]/route'
 
 const TENANT_ID = 'tenant-uuid-111'
 const PARTY_ID = 'party-uuid-222'
+
+class NextRequest extends BaseNextRequest {
+  constructor(input: string | URL, init?: RequestInit) {
+    const headers = new Headers(init?.headers)
+    if (!headers.has('x-tenant-id')) headers.set('x-tenant-id', TENANT_ID)
+    super(input, { ...init, headers })
+  }
+}
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockResolvedValue({
@@ -66,7 +74,7 @@ describe('GET /api/parties', () => {
     ]
     mockFrom = vi.fn().mockReturnValue(makeChain({ data: mockParties, error: null }))
 
-    const req = new NextRequest('http://localhost/api/parties', {
+    const req = new BaseNextRequest('http://localhost/api/parties', {
       headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'worker' },
     })
 
@@ -187,7 +195,7 @@ describe('POST /api/parties', () => {
 
   // P-09 & P-12
   it('P-09 & P-12: Missing x-tenant-id (Unauthenticated or Super User) returns 403', async () => {
-    const req = new NextRequest('http://localhost/api/parties', {
+    const req = new BaseNextRequest('http://localhost/api/parties', {
       method: 'POST',
       body: JSON.stringify({ name: 'Acme' }),
     })
@@ -406,4 +414,3 @@ describe('DELETE /api/parties/[id]', () => {
     expect(body.error).toBe('Delete party failed')
   })
 })
-

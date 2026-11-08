@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,11 +14,13 @@ import { InvoiceActions } from '@/components/sales/invoice-actions';
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+  const tenantId = await getActiveTenantId();
 
   const { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
     .select('*')
     .eq('id', id)
+    .eq('tenant_id', tenantId)
     .single();
 
   if (invoiceError || !invoice) {
@@ -28,6 +31,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     .from('invoice_items')
     .select('*')
     .eq('invoice_id', id)
+    .eq('tenant_id', tenantId)
     .order('created_at', { ascending: true });
 
   if (itemsError) {

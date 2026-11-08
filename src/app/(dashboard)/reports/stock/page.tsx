@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getActiveTenantId } from "@/lib/supabase/tenant-context";
 import { PageHeader } from "@/components/shared/page-header";
 import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { PrintButton } from "@/components/shared/print-button";
@@ -28,12 +29,18 @@ export default async function StockReportPage({
   const endDate = end || defaultEnd;
 
   const supabase = await createClient();
+  const tenantId = await getActiveTenantId();
 
   // Fetch all items and adjustments as instructed
-  const { data: items } = await supabase.from("items").select("id, name").order("name");
+  const { data: items } = await supabase
+    .from("items")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .order("name");
   const { data: adjustments } = await supabase
     .from("stock_adjustments")
-    .select("item_id, type, quantity, date");
+    .select("item_id, type, quantity, date")
+    .eq("tenant_id", tenantId);
 
   const itemsData = items || [];
   const adjustmentsData = adjustments || [];

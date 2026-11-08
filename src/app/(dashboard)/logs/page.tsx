@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 
 export default async function TenantLogsPage() {
   const cookieStore = await cookies();
@@ -21,11 +22,12 @@ export default async function TenantLogsPage() {
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
+  const tenantId = await getActiveTenantId();
 
-  // Because of RLS, this automatically scopes to the user's tenant_id!
   const { data: logs, error } = await supabase
     .from('audit_logs')
     .select('*')
+    .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
     .limit(100);
 
@@ -93,4 +95,3 @@ export default async function TenantLogsPage() {
     </div>
   );
 }
-

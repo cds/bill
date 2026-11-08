@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getActiveTenantId } from '@/lib/supabase/tenant-context'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { DateRangeFilter } from '@/components/reports/date-range-filter'
@@ -17,10 +18,12 @@ export default async function ExpensesReportPage({
   const end = resolvedParams.end as string | undefined
 
   const supabase = await createClient()
+  const tenantId = await getActiveTenantId()
 
   let query = supabase
     .from('expenses')
     .select('*')
+    .eq('tenant_id', tenantId)
     .order('date', { ascending: false })
 
   if (start) {

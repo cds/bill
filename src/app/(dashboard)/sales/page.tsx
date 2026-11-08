@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -10,10 +11,12 @@ import { FileText, Plus } from 'lucide-react';
 
 export default async function SalesPage() {
   const supabase = await createClient();
+  const tenantId = await getActiveTenantId();
 
   const { data: invoices, error } = await supabase
     .from('invoices')
     .select('*')
+    .eq('tenant_id', tenantId)
     .order('invoice_date', { ascending: false })
     .order('invoice_number', { ascending: false });
 
