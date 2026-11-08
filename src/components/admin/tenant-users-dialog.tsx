@@ -9,7 +9,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from 'sonner';
 import { addTenantMember } from '@/app/actions/admin-actions';
 
-export function TenantUsersDialog({ tenantId, trigger }: { tenantId: string, trigger: React.ReactNode }) {
+type TenantUserOption = { id: string; email: string };
+
+export function TenantUsersDialog({
+  tenantId,
+  users,
+  trigger,
+}: {
+  tenantId: string;
+  users?: TenantUserOption[];
+  trigger: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState('');
@@ -18,11 +28,11 @@ export function TenantUsersDialog({ tenantId, trigger }: { tenantId: string, tri
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userId.trim()) return;
-    
+
     setLoading(true);
     const result = await addTenantMember(tenantId, userId, role);
     setLoading(false);
-    
+
     if (result.error) {
       toast.error(result.error);
     } else {
@@ -44,8 +54,35 @@ export function TenantUsersDialog({ tenantId, trigger }: { tenantId: string, tri
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="userId">User UUID</Label>
-            <Input id="userId" required value={userId} onChange={e => setUserId(e.target.value)} placeholder="e.g. 123e4567-e89b-12d3-a456-..." />
+            {users !== undefined ? (
+              <>
+                <Label htmlFor="userEmail">User email</Label>
+                <Select value={userId} onValueChange={(value: string | null) => setUserId(value ?? '')}>
+                  <SelectTrigger id="userEmail" className="w-full">
+                    <SelectValue placeholder="Select a user by email" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>{user.email}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!users.length && (
+                  <p className="text-sm text-muted-foreground">No users with email addresses are available.</p>
+                )}
+              </>
+            ) : (
+              <>
+                <Label htmlFor="userId">User UUID</Label>
+                <Input
+                  id="userId"
+                  required
+                  value={userId}
+                  onChange={(event) => setUserId(event.target.value)}
+                  placeholder="User UUID"
+                />
+              </>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="role">Role</Label>
@@ -60,7 +97,7 @@ export function TenantUsersDialog({ tenantId, trigger }: { tenantId: string, tri
               </SelectContent>
             </Select>
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || !userId}>
             {loading ? 'Assigning...' : 'Assign User'}
           </Button>
         </form>
