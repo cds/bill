@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { ExpenseListClient } from '@/components/expenses/expense-list-client';
 import { headers } from 'next/headers';
+import { PowerSyncProvider } from '@/lib/powersync/provider';
 
 export const metadata = {
   title: 'Expenses | Bill App',
@@ -12,6 +13,7 @@ export default async function ExpensesPage() {
   const supabase = await createClient();
   const tenantId = await getActiveTenantId();
   const requestHeaders = await headers();
+  const systemRole = requestHeaders.get('x-system-role') || 'user';
 
   const { data: expenses, error } = await supabase
     .from('expenses')
@@ -27,5 +29,22 @@ export default async function ExpensesPage() {
   const canManageRecords = requestHeaders.get('x-tenant-role') === 'tenant_admin' ||
     requestHeaders.get('x-system-role') === 'super_admin';
 
-  return <ExpenseListClient expenses={expenses || []} canManageRecords={canManageRecords} />;
+  const expenseList = (
+    <ExpenseListClient
+      expenses={expenses || []}
+      canManageRecords={canManageRecords}
+      tenantId={systemRole === 'super_admin' ? undefined : tenantId}
+    />
+  );
+
+  if (systemRole === 'super_admin') return expenseList;
+
+  return (
+    <PowerSyncProvider
+      tenantId={tenantId}
+      fallback={<p className="p-6" role="status">Opening local expense workspace…</p>}
+    >
+      {expenseList}
+    </PowerSyncProvider>
+  );
 }

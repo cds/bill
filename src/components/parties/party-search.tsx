@@ -25,16 +25,120 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useQuery } from '@powersync/react';
 
 export function PartySearch({
   value,
   onSelect,
+  tenantId,
 }: {
   value: { id: string; name: string } | null;
   onSelect: (party: { id: string; name: string }) => void;
+  tenantId?: string;
 }) {
+  if (tenantId) {
+    return <LocalPartySearch value={value} onSelect={onSelect} tenantId={tenantId} />;
+  }
+  return <OnlinePartySearch value={value} onSelect={onSelect} />;
+}
+
+type PartySearchProps = {
+  value: { id: string; name: string } | null;
+  onSelect: (party: { id: string; name: string }) => void;
+};
+
+type PartyOption = {
+  id: string;
+  name: string;
+  phone: string | null;
+};
+
+function LocalPartySearch({
+  value,
+  onSelect,
+  tenantId,
+}: PartySearchProps & { tenantId: string }) {
+  const result = useQuery<{ id: string; name: string; phone: string | null }>(
+    `SELECT id, name, phone
+     FROM parties
+     WHERE tenant_id = ? AND deleted_at IS NULL AND type = 'customer'
+     ORDER BY name`,
+    [tenantId],
+    {
+      streams: [
+        {
+          name: 'current_tenant_parties',
+          parameters: { tenant_id: tenantId },
+          waitForStream: true,
+        },
+      ],
+    },
+  );
   const [open, setOpen] = React.useState(false);
-  const [parties, setParties] = React.useState<any[]>([]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        role="combobox"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {value ? value.name : 'Select cached customer...'}
+        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+      </PopoverTrigger>
+      <PopoverContent className="w-full p-0">
+        <Command>
+          <CommandInput placeholder="Search cached customers..." />
+          <CommandList>
+            <CommandEmpty>
+              {result.isLoading ? 'Loading cached customers...' : 'No cached customer found.'}
+            </CommandEmpty>
+            <CommandGroup>
+              {result.data.map((party) => (
+                <CommandItem
+                  key={party.id}
+                  value={party.name}
+                  onSelect={() => {
+                    onSelect({ id: party.id, name: party.name });
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      'mr-2 h-4 w-4',
+                      value?.id === party.id ? 'opacity-100' : 'opacity-0',
+                    )}
+                  />
+                  <div className="flex flex-col">
+                    <span>{party.name}</span>
+                    {party.phone && (
+                      <span className="text-xs text-muted-foreground">{party.phone}</span>
+                    )}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+          {result.error ? (
+            <p role="alert" className="border-t p-2 text-sm text-destructive">
+              Could not load local customers: {result.error.message}
+            </p>
+          ) : null}
+          <p className="border-t p-2 text-xs text-muted-foreground">
+            Only previously synced customers are available offline.
+          </p>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function OnlinePartySearch({
+  value,
+  onSelect,
+}: PartySearchProps) {
+  const [open, setOpen] = React.useState(false);
+  const [parties, setParties] = React.useState<PartyOption[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [quickAddOpen, setQuickAddOpen] = React.useState(false);
   
@@ -43,25 +147,32 @@ export function PartySearch({
   const [newPhone, setNewPhone] = React.useState('');
   const [adding, setAdding] = React.useState(false);
   const [quickAddError, setQuickAddError] = React.useState<string | null>(null);
-
-  const fetchParties = React.useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/parties?type=customer');
-      if (res.ok) {
-        const data = await res.json();
-        setParties(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch parties:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    fetchParties();
-  }, [fetchParties]);
+    let cancelled = false;
+    void fetch('/api/parties?type=customer')
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+        return await response.json() as PartyOption[];
+      })
+      .then((data) => {
+        if (!cancelled) setParties(data);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load parties.');
+          console.error('Failed to fetch parties:', error);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,7 +219,9 @@ export function PartySearch({
           <Command>
             <CommandInput placeholder="Search party..." />
             <CommandList>
-              <CommandEmpty>No party found.</CommandEmpty>
+              <CommandEmpty>
+                {loading ? 'Loading parties...' : loadError ? 'Unable to load parties.' : 'No party found.'}
+              </CommandEmpty>
               <CommandGroup>
                 {parties.map((party) => (
                   <CommandItem

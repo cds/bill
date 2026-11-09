@@ -260,6 +260,11 @@ describe('Next.js Middleware Routing & RBAC', () => {
     expect(regex.test('/favicon.ico')).toBe(false)
     expect(regex.test('/logo.png')).toBe(false)
     expect(regex.test('/icon.svg')).toBe(false)
+    expect(regex.test('/sw.js')).toBe(false)
+    expect(regex.test('/offline.html')).toBe(false)
+    expect(regex.test('/offline-shell.css')).toBe(false)
+    expect(regex.test('/offline-shell.js')).toBe(false)
+    expect(regex.test('/manifest.webmanifest')).toBe(false)
   })
 
   // ---------- NEW TESTS (M-12 → M-20) ----------

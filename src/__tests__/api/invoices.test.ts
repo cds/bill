@@ -1,30 +1,11 @@
-/**
- * Tests: GET /api/invoices  and  POST /api/invoices
- *
- * Covers test IDs: I-01 → I-16f
- *
- * Strategy:
- *  - Mock `@/lib/supabase/server` so no real DB/network calls are made.
- *  - Mock `next/headers` (cookies) because createClient() calls cookies() internally.
- *  - Construct NextRequest objects to simulate each user type / scenario.
- *  - Assert HTTP status codes and response body shapes.
- *
- * User types:
- *  - Business User  → x-tenant-id header present, tenant_role = tenant_admin
- *  - User (Worker)  → x-tenant-id header present, tenant_role = worker
- *  - Super User     → no x-tenant-id (middleware never injects it for /admin routes)
- *  - Unauthenticated → no headers at all (middleware would redirect, but we test the handler directly)
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest as BaseNextRequest } from 'next/server'
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 const TENANT_ID = 'tenant-uuid-111'
-const PARTY_ID  = 'party-uuid-222'
-const ITEM_ID   = 'item-uuid-333'
+const PARTY_ID = 'party-uuid-222'
+const ITEM_ID = 'item-uuid-333'
 const INVOICE_ID = 'invoice-uuid-444'
+const OPERATION_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
 
 class NextRequest extends BaseNextRequest {
   constructor(input: string | URL, init?: RequestInit) {
@@ -34,8 +15,13 @@ class NextRequest extends BaseNextRequest {
   }
 }
 
-/** Build a NextRequest for POST /api/invoices */
-function makePostRequest(body: object, headers: Record<string, string> = { 'x-tenant-id': TENANT_ID }) {
+function makePostRequest(
+  body: object,
+  headers: Record<string, string> = {
+    'x-tenant-id': TENANT_ID,
+    'Idempotency-Key': OPERATION_ID,
+  },
+) {
   return new BaseNextRequest('http://localhost/api/invoices', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
@@ -43,18 +29,34 @@ function makePostRequest(body: object, headers: Record<string, string> = { 'x-te
   })
 }
 
-/** Minimal valid invoice body */
 const validBody = {
+  invoice_date: '2026-03-02',
+  party_id: PARTY_ID,
   party_name: 'Acme Corp',
   payment_type: 'cash',
   payment_method: 'cash',
   amount_paid: 0,
-  items: [{ item_name: 'Widget', quantity: 2, rate: 50, unit: 'pcs', tax_percent: 0, discount_percent: 0 }],
+  items: [{
+    item_id: ITEM_ID,
+    item_name: 'Widget',
+    quantity: 2,
+    rate: 50,
+    unit: 'pcs',
+    tax_percent: 0,
+    discount_percent: 0,
+  }],
 }
 
-// ─── Supabase mock setup ─────────────────────────────────────────────────────
+const mockInvoice = {
+  id: INVOICE_ID,
+  invoice_number: 1,
+  party_name: 'Acme Corp',
+  total_amount: 100,
+  balance_due: 0,
+  payment_type: 'cash',
+  tenant_id: TENANT_ID,
+}
 
-// Mock next/headers so createClient() doesn't throw outside Next.js runtime
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockResolvedValue({
     getAll: () => [],
@@ -62,439 +64,209 @@ vi.mock('next/headers', () => ({
   }),
 }))
 
-// We'll replace this implementation per-test using mockClient
 let mockFrom: ReturnType<typeof vi.fn>
+let mockRpc: ReturnType<typeof vi.fn>
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() => ({
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   })),
 }))
 
-// ─── Fluent chain builder ─────────────────────────────────────────────────────
-
-/**
- * Creates a chainable Supabase query mock that eventually resolves to { data, error }.
- * Every chaining method returns `this` so fluent calls don't break.
- */
 function makeChain(resolved: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {}
-  const methods = ['select', 'insert', 'update', 'delete', 'eq', 'neq',
-                   'order', 'limit', 'ilike', 'single', 'maybeSingle', 'filter', 'match', 'in', 'or', 'is']
-  for (const m of methods) {
-    chain[m] = vi.fn().mockReturnThis()
+  for (const method of [
+    'select', 'insert', 'update', 'delete', 'eq', 'neq', 'order', 'limit',
+    'ilike', 'single', 'maybeSingle', 'filter', 'match', 'in', 'or', 'is',
+  ]) {
+    chain[method] = vi.fn().mockReturnThis()
   }
-  // Terminal methods that actually resolve
   ;(chain.single as ReturnType<typeof vi.fn>).mockResolvedValue(resolved)
   ;(chain.maybeSingle as ReturnType<typeof vi.fn>).mockResolvedValue(resolved)
-  // Make the chain itself awaitable (for `await supabase.from('x').select()`)
-  chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve(resolved).then(resolve)
+  chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve(resolved).then(resolve)
   return chain
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+beforeEach(() => {
+  mockFrom = vi.fn().mockReturnValue(
+    makeChain({ data: [{ id: INVOICE_ID, party_name: 'Acme Corp', tenant_id: TENANT_ID }], error: null }),
+  )
+  mockRpc = vi.fn().mockResolvedValue({ data: mockInvoice, error: null })
+})
 
 describe('GET /api/invoices', () => {
-  beforeEach(() => {
-    // Default: returns a list of invoices, no error
-    mockFrom = vi.fn().mockReturnValue(
-      makeChain({ data: [{ id: INVOICE_ID, party_name: 'Acme Corp', tenant_id: TENANT_ID }], error: null })
-    )
+  it('lists invoices for the selected tenant', async () => {
+    const { GET } = await import('@/app/api/invoices/route')
+    const response = await GET(new NextRequest('http://localhost/api/invoices'))
+
+    expect(response.status).toBe(200)
+    expect((await response.json())[0].party_name).toBe('Acme Corp')
   })
 
-  // I-01
-  it('I-01: Business User — lists all invoices for their tenant (200)', async () => {
+  it('filters invoices by party_id', async () => {
     const { GET } = await import('@/app/api/invoices/route')
-    const req = new NextRequest('http://localhost/api/invoices', {
-      headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'tenant_admin' },
-    })
-    const res = await GET(req)
-    const body = await res.json()
+    const response = await GET(new NextRequest(
+      `http://localhost/api/invoices?party_id=${PARTY_ID}`,
+    ))
 
-    expect(res.status).toBe(200)
-    expect(Array.isArray(body)).toBe(true)
-    expect(body[0].party_name).toBe('Acme Corp')
-  })
-
-  // I-02
-  it('I-02: Worker — lists all invoices for their tenant (200)', async () => {
-    const { GET } = await import('@/app/api/invoices/route')
-    const req = new NextRequest('http://localhost/api/invoices', {
-      headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'worker' },
-    })
-    const res = await GET(req)
-
-    expect(res.status).toBe(200)
-    expect(Array.isArray(await res.json())).toBe(true)
-  })
-
-  // I-03
-  it('I-03: Filters by party_id query param', async () => {
-    const { GET } = await import('@/app/api/invoices/route')
-    const req = new NextRequest(`http://localhost/api/invoices?party_id=${PARTY_ID}`, {
-      headers: { 'x-tenant-id': TENANT_ID },
-    })
-    const res = await GET(req)
-
-    // Verify .eq() was called with party_id
     const chain = mockFrom.mock.results[0].value
-    expect((chain.eq as ReturnType<typeof vi.fn>).mock.calls).toEqual(
-      expect.arrayContaining([['party_id', PARTY_ID]])
-    )
-    expect(res.status).toBe(200)
+    expect(chain.eq).toHaveBeenCalledWith('party_id', PARTY_ID)
+    expect(response.status).toBe(200)
   })
 
-  // I-04
-  it('I-04: Non-existent party_id returns empty array (200)', async () => {
-    mockFrom = vi.fn().mockReturnValue(makeChain({ data: [], error: null }))
+  it('returns 403 when tenant context is missing', async () => {
     const { GET } = await import('@/app/api/invoices/route')
-    const req = new NextRequest(`http://localhost/api/invoices?party_id=non-existent`, {
-      headers: { 'x-tenant-id': TENANT_ID },
-    })
-    const res = await GET(req)
-    const body = await res.json()
+    const response = await GET(new BaseNextRequest('http://localhost/api/invoices'))
 
-    expect(res.status).toBe(200)
-    expect(body).toEqual([])
+    expect(response.status).toBe(403)
   })
 
-  // I-05
-  it('I-05: DB error returns 400', async () => {
+  it('returns database errors', async () => {
     mockFrom = vi.fn().mockReturnValue(makeChain({ data: null, error: { message: 'DB error' } }))
     const { GET } = await import('@/app/api/invoices/route')
-    const req = new NextRequest('http://localhost/api/invoices')
-    const res = await GET(req)
+    const response = await GET(new NextRequest('http://localhost/api/invoices'))
 
-    expect(res.status).toBe(400)
-    expect((await res.json()).error).toBe('DB error')
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toBe('DB error')
   })
 })
 
 describe('POST /api/invoices', () => {
-  // I-11 — missing x-tenant-id (unauthenticated / no tenant context)
-  it('I-11: Missing x-tenant-id returns 403', async () => {
+  it('requires tenant context', async () => {
     const { POST } = await import('@/app/api/invoices/route')
-    const req = makePostRequest(validBody, {}) // no tenant header
-    const res = await POST(req)
-
-    expect(res.status).toBe(403)
-    expect((await res.json()).error).toMatch(/tenant/i)
-  })
-
-  // I-16 — Super User has no x-tenant-id
-  it('I-16: Super User (no x-tenant-id) returns 403', async () => {
-    const { POST } = await import('@/app/api/invoices/route')
-    const req = makePostRequest(validBody, { 'x-system-role': 'super_admin' })
-    const res = await POST(req)
-
-    expect(res.status).toBe(403)
-  })
-
-  // I-12 — missing party_name
-  it('I-12: Missing party_name returns 400', async () => {
-    const { POST } = await import('@/app/api/invoices/route')
-    const req = makePostRequest({ ...validBody, party_name: undefined })
-    const res = await POST(req)
-
-    expect(res.status).toBe(400)
-    expect((await res.json()).error).toMatch(/party name/i)
-  })
-
-  // I-12b — missing items array
-  it('I-12b: Empty items array returns 400', async () => {
-    const { POST } = await import('@/app/api/invoices/route')
-    const req = makePostRequest({ ...validBody, items: [] })
-    const res = await POST(req)
-
-    expect(res.status).toBe(400)
-    expect((await res.json()).error).toMatch(/item/i)
-  })
-
-  describe('I-07 & I-08: Successful invoice creation (cash, no tracked items)', () => {
-    const mockInvoice = {
-      id: INVOICE_ID, invoice_number: 'INV-001',
-      party_name: 'Acme Corp', total_amount: 100, balance_due: 0,
-      payment_type: 'cash', tenant_id: TENANT_ID,
-    }
-
-    beforeEach(() => {
-      // Table-specific mock: invoices.insert → success; invoice_items.insert → success
-      mockFrom = vi.fn().mockImplementation((table: string) => {
-        if (table === 'invoices') {
-          const c = makeChain({ data: mockInvoice, error: null })
-          return c
-        }
-        // invoice_items, stock_adjustments, items, parties — all succeed
-        return makeChain({ data: [], error: null })
-      })
-    })
-
-    // I-07 — Business User
-    it('I-07: Business User creates cash invoice → 201 with invoice object', async () => {
-      const { POST } = await import('@/app/api/invoices/route')
-      const res = await POST(makePostRequest({ ...validBody, payment_type: 'cash' }))
-      const body = await res.json()
-
-      expect(res.status).toBe(201)
-      expect(body.id).toBe(INVOICE_ID)
-      expect(body.party_name).toBe('Acme Corp')
-    })
-
-    // I-08 — Worker
-    it('I-08: Worker creates cash invoice → 201', async () => {
-      const { POST } = await import('@/app/api/invoices/route')
-      const res = await POST(makePostRequest({ ...validBody, payment_type: 'cash' }, {
-        'x-tenant-id': TENANT_ID, 'x-tenant-role': 'worker',
-      }))
-
-      expect(res.status).toBe(201)
-    })
-
-    // I-14 — server-side totals override client values
-    it('I-14: Server recalculates totals — client-supplied wrong total is ignored', async () => {
-      const { POST } = await import('@/app/api/invoices/route')
-      // qty=2, rate=50 → subtotal=100, cash → balance_due=0
-      // Client lies and says amount_paid=999 — server ignores it for cash
-      const res = await POST(makePostRequest({
-        ...validBody,
-        payment_type: 'cash',
-        amount_paid: 999, // client lies
-      }))
-      expect(res.status).toBe(201)
-      // Server sets amount_paid = total_amount for cash; verify the insert used correct values
-      // (We trust the route's own logic — just ensure it didn't crash)
-      const insertCall = mockFrom.mock.calls.find(([t]: [string]) => t === 'invoices')
-      expect(insertCall).toBeDefined()
-    })
-  })
-
-  // I-09 — credit invoice → party balance incremented
-  it('I-09: Credit invoice with party_id — party balance is updated', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID, invoice_number: 'INV-002',
-      party_name: 'Credit Corp', total_amount: 200,
-      balance_due: 200, payment_type: 'credit', tenant_id: TENANT_ID,
-    }
-
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices')   return makeChain({ data: mockInvoice, error: null })
-      if (table === 'parties')    return makeChain({ data: { balance: 0 }, error: null })
-      return makeChain({ data: [], error: null })
-    })
-
-    const { POST } = await import('@/app/api/invoices/route')
-    const res = await POST(makePostRequest({
-      ...validBody,
-      party_id: PARTY_ID,
-      party_name: 'Credit Corp',
-      payment_type: 'credit',
-      amount_paid: 0,
+    const response = await POST(makePostRequest(validBody, {
+      'Idempotency-Key': OPERATION_ID,
     }))
 
-    expect(res.status).toBe(201)
-    // Verify parties.update was called (balance increment)
-    const partiesCalls = mockFrom.mock.calls.filter(([t]: [string]) => t === 'parties')
-    expect(partiesCalls.length).toBeGreaterThanOrEqual(2) // select + update
+    expect(response.status).toBe(403)
+    expect(mockRpc).not.toHaveBeenCalled()
   })
 
-  // I-10 — cash invoice → NO party balance change
-  it('I-10: Cash invoice — party balance is NOT updated', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID, invoice_number: 'INV-003',
-      party_name: 'Cash Corp', total_amount: 100, balance_due: 0,
-      payment_type: 'cash', tenant_id: TENANT_ID,
-    }
+  it('requires party name and invoice items', async () => {
+    const { POST } = await import('@/app/api/invoices/route')
+    const missingParty = await POST(makePostRequest({ ...validBody, party_name: ' ' }))
+    const missingItems = await POST(makePostRequest({ ...validBody, items: [] }))
 
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
-      if (table === 'parties') return makeChain({ data: { id: PARTY_ID }, error: null })
-      return makeChain({ data: [], error: null })
+    expect(missingParty.status).toBe(400)
+    expect((await missingParty.json()).error).toMatch(/party name/i)
+    expect(missingItems.status).toBe(400)
+    expect((await missingItems.json()).error).toMatch(/item/i)
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('requires a valid idempotency key', async () => {
+    const { POST } = await import('@/app/api/invoices/route')
+    const response = await POST(makePostRequest(validBody, { 'x-tenant-id': TENANT_ID }))
+
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(/Idempotency-Key/)
+    expect(mockRpc).not.toHaveBeenCalled()
+  })
+
+  it('creates through one tenant-scoped RPC and returns the invoice', async () => {
+    const { POST } = await import('@/app/api/invoices/route')
+    const response = await POST(makePostRequest(validBody))
+
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({ id: INVOICE_ID })
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockRpc).toHaveBeenCalledWith('create_invoice', {
+      p_tenant_id: TENANT_ID,
+      p_operation_id: OPERATION_ID,
+      p_invoice_date: validBody.invoice_date,
+      p_party_id: PARTY_ID,
+      p_party_name: 'Acme Corp',
+      p_payment_type: 'cash',
+      p_payment_method: 'cash',
+      p_amount_paid: 0,
+      p_notes: null,
+      p_items: validBody.items,
     })
-
-    const { POST } = await import('@/app/api/invoices/route')
-    const res = await POST(makePostRequest({
-      ...validBody,
-      party_id: PARTY_ID,
-      payment_type: 'cash',
-    }))
-
-    expect(res.status).toBe(201)
-    // The party is validated, but its balance is not updated for cash sales.
-    const partiesCalls = mockFrom.mock.calls
-      .filter(([t]: [string]) => t === 'parties')
-    expect(partiesCalls.length).toBe(1)
+    expect(mockFrom).not.toHaveBeenCalled()
   })
 
-  // I-07 with tracked items — stock decremented + stock_adjustments inserted
-  it('I-07b: Invoice with tracked item_id — stock is decremented and adjustment recorded', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID, invoice_number: 'INV-004',
-      party_name: 'Acme Corp', total_amount: 100,
-      balance_due: 0, payment_type: 'cash', tenant_id: TENANT_ID,
-    }
-
-    let itemQueryCount = 0
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices')           return makeChain({ data: mockInvoice, error: null })
-      if (table === 'items') {
-        itemQueryCount += 1
-        return makeChain({
-          data: itemQueryCount === 1 ? [{ id: ITEM_ID }] : { current_stock: 10 },
-          error: null,
-        })
-      }
-      if (table === 'stock_adjustments')  return makeChain({ data: [], error: null })
-      return makeChain({ data: [], error: null })
-    })
-
+  it('defaults omitted payment fields before calling the RPC', async () => {
     const { POST } = await import('@/app/api/invoices/route')
-    const res = await POST(makePostRequest({
-      ...validBody,
-      items: [{ item_id: ITEM_ID, item_name: 'Widget', quantity: 2, rate: 50, unit: 'pcs', tax_percent: 0, discount_percent: 0 }],
-    }))
-
-    expect(res.status).toBe(201)
-    // items table was queried (current_stock fetch) and updated
-    const itemsCalls = mockFrom.mock.calls.filter(([t]: [string]) => t === 'items')
-    expect(itemsCalls.length).toBeGreaterThanOrEqual(2) // select + update
-    // stock_adjustments was inserted
-    const adjCalls = mockFrom.mock.calls.filter(([t]: [string]) => t === 'stock_adjustments')
-    expect(adjCalls.length).toBeGreaterThanOrEqual(1)
-  })
-
-  // I-15 — invoice_items insert fails → invoice is rolled back
-  it('I-15: invoice_items insert failure triggers rollback — invoice is deleted', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID, invoice_number: 'INV-005',
-      party_name: 'Acme Corp', total_amount: 100, balance_due: 0,
-      payment_type: 'cash', tenant_id: TENANT_ID,
-    }
-
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
-      if (table === 'invoice_items') return makeChain({ data: null, error: { message: 'FK violation' } })
-      return makeChain({ data: [], error: null })
-    })
-
-    const { POST } = await import('@/app/api/invoices/route')
-    const res = await POST(makePostRequest(validBody))
-
-    expect(res.status).toBe(500)
-    // invoices.delete should have been called as rollback
-    const invoiceCalls = mockFrom.mock.calls.filter(([t]: [string]) => t === 'invoices')
-    // Should have at least 2 calls to 'invoices': insert + delete (rollback)
-    expect(invoiceCalls.length).toBeGreaterThanOrEqual(2)
-  })
-
-  it('I-16b: Returns 500 when invoice creation fails', async () => {
-    mockFrom = vi.fn().mockReturnValue(
-      makeChain({ data: null, error: { message: 'Invoice insert failed' } })
-    )
-
-    const { POST } = await import('@/app/api/invoices/route')
-    const res = await POST(makePostRequest(validBody))
-    const body = await res.json()
-
-    expect(res.status).toBe(500)
-    expect(body.error).toBe('Invoice insert failed')
-  })
-
-  it('I-16c: Defaults omitted payment type and method to cash', async () => {
-    let insertPayload: Record<string, unknown> | null = null
-    const mockInvoice = { id: INVOICE_ID, party_name: 'Acme Corp' }
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      const chain = makeChain({ data: mockInvoice, error: null })
-      if (table === 'invoices') {
-        chain.insert = vi.fn().mockImplementation((payload) => {
-          insertPayload = payload
-          return chain
-        })
-      }
-      return chain
-    })
-
-    const { POST } = await import('@/app/api/invoices/route')
-    const res = await POST(makePostRequest({
+    const response = await POST(makePostRequest({
       party_name: validBody.party_name,
       items: validBody.items,
     }))
 
-    expect(res.status).toBe(201)
-    expect(insertPayload).toMatchObject({
-      payment_type: 'cash',
-      payment_method: 'cash',
-    })
-  })
-
-  it('I-16d: Uses the generic error message when invoice creation throws without a message', async () => {
-    mockFrom = vi.fn().mockReturnValue(
-      makeChain({ data: null, error: { code: 'UNKNOWN' } })
-    )
-
-    const { POST } = await import('@/app/api/invoices/route')
-    const res = await POST(makePostRequest(validBody))
-    const body = await res.json()
-
-    expect(res.status).toBe(500)
-    expect(body.error).toBe('Internal Server Error')
-  })
-
-  it('I-16e: Skips stock updates when a tracked item no longer exists', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID,
-      invoice_number: 'INV-006',
-      party_name: 'Acme Corp',
-      total_amount: 100,
-      balance_due: 0,
-      payment_type: 'cash',
-    }
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
-      if (table === 'items') return makeChain({ data: null, error: null })
-      return makeChain({ data: null, error: null })
-    })
-
-    const { POST } = await import('@/app/api/invoices/route')
-    const res = await POST(makePostRequest({
-      ...validBody,
-      items: [{
-        item_id: ITEM_ID,
-        item_name: 'Widget',
-        quantity: 2,
-        rate: 50,
-        unit: 'pcs',
-      }],
+    expect(response.status).toBe(201)
+    expect(mockRpc).toHaveBeenCalledWith('create_invoice', expect.objectContaining({
+      p_payment_type: 'cash',
+      p_payment_method: 'cash',
+      p_amount_paid: 0,
     }))
-
-    expect(res.status).toBe(400)
-    const itemCalls = mockFrom.mock.calls.filter(([table]: [string]) => table === 'items')
-    expect(itemCalls).toHaveLength(1)
   })
 
-  it('I-16f: Skips party balance update when the credit party no longer exists', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID,
-      invoice_number: 'INV-007',
-      party_name: 'Missing Party',
-      total_amount: 100,
-      balance_due: 100,
-      payment_type: 'credit',
-    }
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
-      if (table === 'parties') return makeChain({ data: null, error: null })
-      return makeChain({ data: null, error: null })
-    })
-
+  it('uses the same operation ID and payload when a request is retried', async () => {
     const { POST } = await import('@/app/api/invoices/route')
-    const res = await POST(makePostRequest({
-      ...validBody,
-      party_id: PARTY_ID,
-      payment_type: 'credit',
-    }))
+    const first = await POST(makePostRequest(validBody))
+    const second = await POST(makePostRequest(validBody))
 
-    expect(res.status).toBe(400)
-    const partyCalls = mockFrom.mock.calls.filter(([table]: [string]) => table === 'parties')
-    expect(partyCalls).toHaveLength(1)
+    expect(first.status).toBe(201)
+    expect(second.status).toBe(201)
+    expect((await first.json()).id).toBe((await second.json()).id)
+    expect(mockRpc).toHaveBeenCalledTimes(2)
+    expect(mockRpc.mock.calls[0]).toEqual(mockRpc.mock.calls[1])
+  })
+
+  it('maps tenant membership rejection to 403', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: '42501', message: 'User is not a member of the selected tenant.' },
+    })
+    const { POST } = await import('@/app/api/invoices/route')
+    const response = await POST(makePostRequest(validBody))
+
+    expect(response.status).toBe(403)
+    expect((await response.json()).error).toMatch(/member/i)
+  })
+
+  it('returns a validation error when the RPC rejects a cross-tenant record', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: '23503', message: 'One or more items were not found in the selected tenant.' },
+    })
+    const { POST } = await import('@/app/api/invoices/route')
+    const response = await POST(makePostRequest(validBody))
+
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(/selected tenant/i)
+  })
+
+  it('returns the atomic operation error without issuing partial table writes', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: '23503', message: 'A sale item is unavailable or discarded.' },
+    })
+    const { POST } = await import('@/app/api/invoices/route')
+    const response = await POST(makePostRequest(validBody))
+
+    expect(response.status).toBe(400)
+    expect(mockRpc).toHaveBeenCalledTimes(1)
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 when an operation ID is reused with different data', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: '55000', message: 'Invoice operation ID was already used with different data.' },
+    })
+    const { POST } = await import('@/app/api/invoices/route')
+    const response = await POST(makePostRequest(validBody))
+
+    expect(response.status).toBe(409)
+    expect((await response.json()).error).toMatch(/different data/i)
+  })
+
+  it('returns a server error when the RPC response is empty', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null })
+    const { POST } = await import('@/app/api/invoices/route')
+    const response = await POST(makePostRequest(validBody))
+
+    expect(response.status).toBe(500)
   })
 })

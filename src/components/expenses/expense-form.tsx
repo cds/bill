@@ -15,6 +15,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { Expense } from '@/lib/supabase/types';
+import { usePowerSyncOrNull } from '@powersync/react';
+import { saveExpenseLocally } from '@/lib/powersync/expense-writes';
 import {
   Select,
   SelectContent,
@@ -36,11 +38,13 @@ const CATEGORIES = [
 interface ExpenseFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  expense?: Expense;
+  expense?: Pick<Expense, 'id' | 'date' | 'category' | 'amount' | 'payment_status' | 'payment_mode' | 'notes' | 'created_at'>;
+  tenantId?: string;
 }
 
-export function ExpenseForm({ open, onOpenChange, expense }: ExpenseFormProps) {
+export function ExpenseForm({ open, onOpenChange, expense, tenantId }: ExpenseFormProps) {
   const router = useRouter();
+  const database = usePowerSyncOrNull();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +64,37 @@ export function ExpenseForm({ open, onOpenChange, expense }: ExpenseFormProps) {
     };
 
     try {
+      if (!expense && tenantId) {
+        if (!database) {
+          throw new Error('The offline database is not ready. Reopen this form when the local workspace is available.');
+        }
+
+        const amount = Number(data.amount);
+        const category = typeof data.category === 'string' ? data.category.trim() : '';
+        const date = typeof data.date === 'string' ? data.date : '';
+        const paymentMode = data.payment_mode;
+        const notes = typeof data.notes === 'string' ? data.notes.trim() || null : null;
+        if (
+          !date ||
+          !category ||
+          !Number.isFinite(amount) ||
+          amount < 0 ||
+          (paymentMode !== 'cash' && paymentMode !== 'bank' && paymentMode !== 'upi')
+        ) {
+          throw new Error('Enter a valid date, category, amount, and payment mode.');
+        }
+
+        await saveExpenseLocally(database, tenantId, {
+          date,
+          category,
+          amount,
+          payment_mode: paymentMode,
+          notes,
+        });
+        onOpenChange(false);
+        return;
+      }
+
       const res = await fetch(expense ? `/api/expenses/${expense.id}` : '/api/expenses', {
         method: expense ? 'PATCH' : 'POST',
         headers: {

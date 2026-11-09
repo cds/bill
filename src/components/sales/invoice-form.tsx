@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useReducer } from 'react';
+import { useState, useReducer, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,9 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 import { Invoice } from '@/lib/supabase/types';
 import type { Item } from '@/lib/supabase/types';
+import { usePowerSyncOrNull } from '@powersync/react';
+import { saveInvoiceLocally } from '@/lib/powersync/invoice-writes';
+import { OfflineInvoiceStatusList } from './offline-invoice-status';
 
 type LineItem = {
   tempId: string;
@@ -140,11 +143,14 @@ function reducer(state: InvoiceFormState, action: Action): InvoiceFormState {
 export function InvoiceForm({
   invoice,
   invoiceItems = [],
+  itemLookupTenantId,
 }: {
   invoice?: Invoice;
   invoiceItems?: ExistingInvoiceItem[];
+  itemLookupTenantId?: string;
 }) {
   const router = useRouter();
+  const database = usePowerSyncOrNull();
   const [state, dispatch] = useReducer(
     reducer,
     { invoice, invoiceItems },
@@ -153,6 +159,7 @@ export function InvoiceForm({
   const [isItemSelectorOpen, setIsItemSelectorOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [changeReason, setChangeReason] = useState('');
+  const createOperationRef = useRef<{ payload: string; id: string } | null>(null);
 
   // Auto-calculations
   const itemsWithAmounts = state.lineItems.map((item) => {
@@ -256,10 +263,41 @@ export function InvoiceForm({
           discount_percent: i.discount_percent,
         }))
       };
+      if (!invoice && itemLookupTenantId) {
+        if (!database) {
+          throw new Error('The offline invoice database is not ready. Reopen this form when the local workspace is available.');
+        }
+
+        await saveInvoiceLocally(database, itemLookupTenantId, {
+          invoice_date: state.invoice_date,
+          party_id: state.party.id,
+          party_name: state.party.name,
+          payment_type: state.payment_type,
+          payment_method: state.payment_method,
+          amount_paid: actualAmountPaid,
+          notes: state.notes.trim() || null,
+          items: payload.items,
+          estimated_total: grandTotal,
+        });
+        createOperationRef.current = null;
+        dispatch({ type: 'RESET' });
+        toast.success('Saved locally. Pending sync; the official invoice number appears after server acceptance.');
+        return;
+      }
+
+      const serializedPayload = JSON.stringify(payload);
+      if (!invoice && createOperationRef.current?.payload !== serializedPayload) {
+        createOperationRef.current = { payload: serializedPayload, id: crypto.randomUUID() };
+      }
 
       const res = await fetch(invoice ? `/api/invoices/${invoice.id}` : '/api/invoices', {
         method: invoice ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(!invoice && createOperationRef.current
+            ? { 'Idempotency-Key': createOperationRef.current.id }
+            : {}),
+        },
         body: JSON.stringify(payload),
       });
 
@@ -269,6 +307,7 @@ export function InvoiceForm({
       }
 
       const data = await res.json() as { id: string };
+      if (!invoice) createOperationRef.current = null;
       
       toast.success(invoice ? 'Sale updated successfully' : 'Invoice saved successfully');
       
@@ -295,7 +334,16 @@ export function InvoiceForm({
         </div>
       </div>
 
+      {!invoice && itemLookupTenantId ? (
+        <OfflineInvoiceStatusList tenantId={itemLookupTenantId} />
+      ) : null}
+
       <div className="grid gap-6">
+        {!invoice && itemLookupTenantId ? (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-muted-foreground">
+            Offline invoices save locally first. Cached stock is an estimate; the server rejects an invoice if current stock is insufficient.
+          </p>
+        ) : null}
         <Card>
           <CardContent className="p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -351,6 +399,7 @@ export function InvoiceForm({
               <PartySearch 
                 value={state.party} 
                 onSelect={(party) => dispatch({ type: 'SET_PARTY', payload: party })}
+                tenantId={!invoice ? itemLookupTenantId : undefined}
               />
             </div>
           </CardContent>
@@ -483,6 +532,7 @@ export function InvoiceForm({
       <ItemSelector 
         open={isItemSelectorOpen} 
         onOpenChange={setIsItemSelectorOpen}
+        tenantId={itemLookupTenantId}
         selectedItems={state.lineItems.map(({ item_id, quantity, rate }) => ({
           itemId: item_id,
           quantity,

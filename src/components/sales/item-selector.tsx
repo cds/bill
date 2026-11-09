@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useQuery } from '@powersync/react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -22,17 +23,68 @@ type ItemSelectorProps = {
   onOpenChange: (open: boolean) => void;
   selectedItems: { itemId: string | null; quantity: number; rate: number }[];
   onQuantityChange: (item: Item, quantity: number) => void;
+  tenantId?: string;
 };
 
-export function ItemSelector({ open, onOpenChange, selectedItems, onQuantityChange }: ItemSelectorProps) {
-  const isDesktop = useMediaQuery('(min-width: 768px)');
-  const [search, setSearch] = useState('');
+type PowerSyncItem = {
+  id: string;
+  name: string;
+  unit: string | null;
+  sale_price: number | null;
+  current_stock: number | null;
+};
+
+export function ItemSelector(props: ItemSelectorProps) {
+  if (props.tenantId) {
+    return <PowerSyncItemSelector {...props} tenantId={props.tenantId} />;
+  }
+
+  return <OnlineItemSelector {...props} />;
+}
+
+function PowerSyncItemSelector({ tenantId, ...props }: ItemSelectorProps & { tenantId: string }) {
+  const result = useQuery<PowerSyncItem>(
+    `SELECT id, name, unit, sale_price, current_stock
+     FROM items
+     WHERE tenant_id = ? AND deleted_at IS NULL
+     ORDER BY name`,
+    [tenantId],
+    {
+      streams: [
+        {
+          name: 'current_tenant_items',
+          parameters: { tenant_id: tenantId },
+          waitForStream: true,
+        },
+      ],
+    },
+  );
+  const items = result.data.map((item) => ({
+    ...item,
+    unit: item.unit ?? 'Pcs',
+    sale_price: item.sale_price ?? 0,
+    current_stock: item.current_stock ?? 0,
+  }));
+
+  return (
+    <ItemSelectorView
+      {...props}
+      items={items}
+      isLoading={result.isLoading}
+      loadError={result.error?.message ?? null}
+      onRetry={() => void result.refresh?.()}
+      stockIsEstimate
+    />
+  );
+}
+
+function OnlineItemSelector(props: ItemSelectorProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [itemsLoaded, setItemsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || itemsLoaded) return;
+    if (!props.open || itemsLoaded) return;
 
     let cancelled = false;
     const loadItems = async () => {
@@ -55,14 +107,48 @@ export function ItemSelector({ open, onOpenChange, selectedItems, onQuantityChan
     return () => {
       cancelled = true;
     };
-  }, [open, itemsLoaded]);
+  }, [props.open, itemsLoaded]);
+
+  return (
+    <ItemSelectorView
+      {...props}
+      items={items}
+      isLoading={!itemsLoaded}
+      loadError={loadError}
+      onRetry={() => {
+        setLoadError(null);
+        setItemsLoaded(false);
+      }}
+    />
+  );
+}
+
+function ItemSelectorView({
+  open,
+  onOpenChange,
+  selectedItems,
+  onQuantityChange,
+  items,
+  isLoading,
+  loadError,
+  onRetry,
+  stockIsEstimate = false,
+}: ItemSelectorProps & {
+  items: Item[];
+  isLoading: boolean;
+  loadError: string | null;
+  onRetry: () => void;
+  stockIsEstimate?: boolean;
+}) {
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const [search, setSearch] = useState('');
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) setSearch('');
     onOpenChange(nextOpen);
   };
 
-  const filteredItems = items.filter(item => 
+  const filteredItems = items.filter(item =>
     item.name.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -89,25 +175,22 @@ export function ItemSelector({ open, onOpenChange, selectedItems, onQuantityChan
       </div>
 
       <div className="min-h-[240px] flex-1 overflow-y-auto">
-        {!itemsLoaded ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Loading items...</div>
+        {isLoading ? (
+          <div className="p-8 text-center text-sm text-muted-foreground" role="status">Loading items...</div>
         ) : loadError ? (
-          <div className="p-8 text-center text-sm text-destructive">
+          <div className="p-8 text-center text-sm text-destructive" role="alert">
             {loadError}{' '}
             <Button
               type="button"
               variant="link"
               className="h-auto p-0 text-destructive"
-              onClick={() => {
-                setLoadError(null);
-                setItemsLoaded(false);
-              }}
+              onClick={onRetry}
             >
               Try again
             </Button>
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">No items found.</div>
+          <div className="p-8 text-center text-sm text-muted-foreground" role="status">No items found.</div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {filteredItems.map(item => {
@@ -128,7 +211,7 @@ export function ItemSelector({ open, onOpenChange, selectedItems, onQuantityChan
                         <span>{item.unit}</span>
                         <span aria-hidden="true">·</span>
                         <span className={item.current_stock <= 0 ? 'text-destructive' : ''}>
-                          {item.current_stock} in stock
+                          {item.current_stock} {stockIsEstimate ? 'estimated' : 'in stock'}
                         </span>
                         {item.current_stock <= 0 && (
                           <AlertCircle aria-label="Out of stock" className="h-3 w-3 text-destructive" />

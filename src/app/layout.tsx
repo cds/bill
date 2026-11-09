@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from 'sonner';
+import { ServiceWorkerRegistration } from '@/components/pwa/service-worker-registration';
 
 const inter = Inter({
   variable: '--font-inter',
@@ -11,6 +12,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Bill — Eatera Foods',
   description: 'SME Accounting, Billing & Inventory for Eatera Foods',
+  manifest: '/manifest.webmanifest',
 };
 
 export const viewport: Viewport = {
@@ -26,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col font-sans antialiased bg-background text-foreground">
         {children}
         <Toaster richColors position="top-center" />
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );
