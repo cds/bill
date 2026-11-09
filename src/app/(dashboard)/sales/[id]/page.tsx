@@ -1,20 +1,24 @@
 import { createClient } from '@/lib/supabase/server';
 import { getActiveTenantId } from '@/lib/supabase/tenant-context';
-import { PageHeader } from '@/components/shared/page-header';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { InvoiceActions } from '@/components/sales/invoice-actions';
+import { headers } from 'next/headers';
+import { Badge } from '@/components/ui/badge';
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
   const tenantId = await getActiveTenantId();
+  const requestHeaders = await headers();
+  const canManageRecords = requestHeaders.get('x-tenant-role') === 'tenant_admin' ||
+    requestHeaders.get('x-system-role') === 'super_admin';
 
   const { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
@@ -46,8 +50,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Sales
         </Link>
-        <InvoiceActions invoice={invoice} />
+        <InvoiceActions invoice={invoice} canManageRecords={canManageRecords} />
       </div>
+
+      {invoice.deleted_at && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <p className="font-semibold text-destructive">Voided sale</p>
+          <p className="mt-1 text-muted-foreground">
+            This sale remains in history but is excluded from active totals.
+            {invoice.deleted_reason ? ` Reason: ${invoice.deleted_reason}` : ''}
+          </p>
+        </div>
+      )}
 
       <Card className="p-8 print:p-0 print:border-none print:shadow-none">
         <CardContent className="p-0 space-y-8">
@@ -103,10 +117,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   const lineTotal = afterDiscount + taxAmount;
                   
                   return (
-                    <TableRow key={item.id}>
+                    <TableRow key={item.id} className={item.deleted_at ? 'text-muted-foreground' : ''}>
                       <TableCell className="text-muted-foreground">{index + 1}</TableCell>
                       <TableCell>
-                        <p className="font-medium">{item.item_name}</p>
+                        <p className={`font-medium ${item.deleted_at ? 'line-through' : ''}`}>{item.item_name}</p>
+                        {item.deleted_at && (
+                          <Badge variant="outline" className="mt-1 text-xs">
+                            Replaced / voided
+                          </Badge>
+                        )}
                         {(item.tax_percent > 0 || item.discount_percent > 0) && (
                           <p className="text-xs text-muted-foreground">
                             {item.discount_percent > 0 && `-${item.discount_percent}% disc `}

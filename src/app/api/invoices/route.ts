@@ -32,6 +32,7 @@ export async function GET(request: Request) {
     .from('invoices')
     .select('*')
     .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
   if (party_id) {
@@ -85,6 +86,7 @@ export async function POST(request: Request) {
         .select('id')
         .eq('id', party_id)
         .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
         .maybeSingle();
 
       if (partyError) throw partyError;
@@ -99,7 +101,8 @@ export async function POST(request: Request) {
         .from('items')
         .select('id')
         .in('id', trackedItemIds)
-        .eq('tenant_id', tenantId);
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null);
 
       if (itemError) throw itemError;
       if ((tenantItems ?? []).length !== trackedItemIds.length) {

@@ -17,6 +17,7 @@ type AuditLog = {
   action: 'INSERT' | 'UPDATE' | 'SOFT_DELETE';
   old_data: Record<string, unknown> | null;
   new_data: Record<string, unknown> | null;
+  reason: string | null;
   created_at: string;
   created_at_label: string;
   tenants: { name: string } | null;

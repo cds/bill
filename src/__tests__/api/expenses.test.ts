@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest as BaseNextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { GET, POST } from '@/app/api/expenses/route'
+import { PATCH as updateExpense, DELETE as deleteExpense } from '@/app/api/expenses/[id]/route'
 
 const TENANT_ID = 'tenant-uuid-111'
 const EXPENSE_ID = 'expense-uuid-555'
@@ -52,7 +53,7 @@ function makeChain(resolved: { data: unknown; error: unknown }) {
   const methods = [
     'select', 'insert', 'update', 'delete', 'eq', 'neq',
     'order', 'limit', 'ilike', 'single', 'maybeSingle',
-    'filter', 'match', 'in', 'or'
+    'filter', 'match', 'in', 'or', 'is'
   ]
   for (const m of methods) {
     chain[m] = vi.fn().mockReturnThis()
@@ -252,5 +253,75 @@ describe('POST /api/expenses', () => {
 
     expect(res.status).toBe(500)
     expect(body.error).toBe('An unexpected error occurred')
+  })
+})
+
+describe('PATCH and DELETE /api/expenses/[id]', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('updates an expense and records the change reason', async () => {
+    let updatePayload: Record<string, unknown> | null = null
+    const updatedExpense = { id: EXPENSE_ID, category: 'Travel', amount: 300 }
+    mockFrom = vi.fn().mockImplementation(() => {
+      const chain = makeChain({ data: updatedExpense, error: null })
+      chain.update = vi.fn().mockImplementation((payload) => {
+        updatePayload = payload
+        return chain
+      })
+      return chain
+    })
+
+    const req = new NextRequest(`http://localhost/api/expenses/${EXPENSE_ID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        date: '2026-10-18',
+        category: 'Travel',
+        amount: 300,
+        payment_mode: 'cash',
+        reason: 'Correcting category',
+      }),
+    })
+    const res = await updateExpense(req, { params: Promise.resolve({ id: EXPENSE_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(updatePayload?.change_reason).toBe('Correcting category')
+    expect(updatePayload?.amount).toBe(300)
+  })
+
+  it('requires a reason before discarding an expense', async () => {
+    const from = vi.fn()
+    mockFrom = from
+    const req = new NextRequest(`http://localhost/api/expenses/${EXPENSE_ID}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason: ' ' }),
+    })
+    const res = await deleteExpense(req, { params: Promise.resolve({ id: EXPENSE_ID }) })
+
+    expect(res.status).toBe(400)
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('soft-discards an expense with the supplied reason', async () => {
+    let updatePayload: Record<string, unknown> | null = null
+    mockFrom = vi.fn().mockImplementation(() => {
+      const chain = makeChain({ data: { id: EXPENSE_ID }, error: null })
+      chain.update = vi.fn().mockImplementation((payload) => {
+        updatePayload = payload
+        return chain
+      })
+      return chain
+    })
+
+    const req = new NextRequest(`http://localhost/api/expenses/${EXPENSE_ID}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason: 'Duplicate entry' }),
+    })
+    const res = await deleteExpense(req, { params: Promise.resolve({ id: EXPENSE_ID }) })
+
+    expect(res.status).toBe(200)
+    expect(updatePayload?.deleted_reason).toBe('Duplicate entry')
+    expect(updatePayload?.deleted_at).toEqual(expect.any(String))
   })
 })

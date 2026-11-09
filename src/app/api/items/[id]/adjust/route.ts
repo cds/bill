@@ -26,6 +26,7 @@ export async function POST(
       .select('current_stock')
       .eq('id', id)
       .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
       .single()
 
     if (itemError || !item) {

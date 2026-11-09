@@ -2,11 +2,13 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getActiveTenantId } from '@/lib/supabase/tenant-context'
 import { ItemDetailClient } from '@/components/items/item-detail-client'
+import { headers } from 'next/headers'
 
 export default async function ItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
   const tenantId = await getActiveTenantId()
+  const requestHeaders = await headers()
   
   const { data: item } = await supabase
     .from('items')
@@ -27,5 +29,8 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })
 
-  return <ItemDetailClient item={item} stockAdjustments={adjustments || []} />
+  const canManageRecords = requestHeaders.get('x-tenant-role') === 'tenant_admin' ||
+    requestHeaders.get('x-system-role') === 'super_admin'
+
+  return <ItemDetailClient item={item} stockAdjustments={adjustments || []} canManageRecords={canManageRecords} />
 }

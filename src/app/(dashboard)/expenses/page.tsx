@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { ExpenseListClient } from '@/components/expenses/expense-list-client';
+import { headers } from 'next/headers';
 
 export const metadata = {
   title: 'Expenses | Bill App',
@@ -10,6 +11,7 @@ export const metadata = {
 export default async function ExpensesPage() {
   const supabase = await createClient();
   const tenantId = await getActiveTenantId();
+  const requestHeaders = await headers();
 
   const { data: expenses, error } = await supabase
     .from('expenses')
@@ -22,5 +24,8 @@ export default async function ExpensesPage() {
     // You could return an error state component here
   }
 
-  return <ExpenseListClient expenses={expenses || []} />;
+  const canManageRecords = requestHeaders.get('x-tenant-role') === 'tenant_admin' ||
+    requestHeaders.get('x-system-role') === 'super_admin';
+
+  return <ExpenseListClient expenses={expenses || []} canManageRecords={canManageRecords} />;
 }

@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const type = searchParams.get('type');
   const search = searchParams.get('search');
 
-  let query = supabase.from('parties').select('*').eq('tenant_id', tenantId);
+  let query = supabase.from('parties').select('*').eq('tenant_id', tenantId).is('deleted_at', null);
 
   if (type) {
     query = query.eq('type', type);

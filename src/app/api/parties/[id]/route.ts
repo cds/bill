@@ -39,18 +39,41 @@ export async function PATCH(
     return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
   }
   const supabase = await createClient();
-  const body = await request.json();
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+  const editableFields = ['name', 'phone', 'address', 'type'];
+
+  if (!body || !reason ||
+    !editableFields.some((field) => Object.hasOwn(body, field)) ||
+    (body.name !== undefined && (typeof body.name !== 'string' || !body.name.trim())) ||
+    (body.phone !== undefined && body.phone !== null && typeof body.phone !== 'string') ||
+    (body.address !== undefined && body.address !== null && typeof body.address !== 'string') ||
+    (body.type !== undefined && !['customer', 'supplier'].includes(String(body.type)))) {
+    return NextResponse.json({ error: 'Invalid party details or missing edit reason' }, { status: 400 });
+  }
+
+  const updateData: Record<string, string | null> = { change_reason: reason };
+  for (const field of editableFields) {
+    if (body[field] !== undefined) {
+      updateData[field] = typeof body[field] === 'string' ? body[field].trim() : null;
+    }
+  }
 
   const { data, error } = await supabase
     .from('parties')
-    .update({ ...body, tenant_id: tenantId })
+    .update(updateData)
     .eq('id', id)
     .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const status = error.code === '42501' ? 403 : 500;
+    return NextResponse.json({ error: error.message }, { status });
+  }
+  if (!data) {
+    return NextResponse.json({ error: 'Party not found or already discarded' }, { status: 404 });
   }
 
   return NextResponse.json(data);
@@ -67,34 +90,28 @@ export async function DELETE(
   }
   const supabase = await createClient();
 
-  // Check if party has invoices
-  const { data: invoices, error: invoicesError } = await supabase
-    .from('invoices')
-    .select('id')
-    .eq('party_id', id)
-    .eq('tenant_id', tenantId)
-    .limit(1);
-
-  if (invoicesError) {
-    return NextResponse.json({ error: invoicesError.message }, { status: 500 });
+  const body = await request.json().catch(() => null) as { reason?: unknown } | null;
+  const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+  if (!reason) {
+    return NextResponse.json({ error: 'A reason is required to discard a party' }, { status: 400 });
   }
 
-  if (invoices && invoices.length > 0) {
-    return NextResponse.json(
-      { error: 'Cannot delete party with existing invoices' },
-      { status: 400 }
-    );
-  }
-
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('parties')
-    .delete()
+    .update({ deleted_at: new Date().toISOString(), deleted_reason: reason })
     .eq('id', id)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .select('id')
+    .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const status = error.code === '42501' ? 403 : 500;
+    return NextResponse.json({ error: error.message }, { status });
+  }
+  if (!data) {
+    return NextResponse.json({ error: 'Party not found or already discarded' }, { status: 404 });
   }
 
-  return new NextResponse(null, { status: 204 });
+  return NextResponse.json({ success: true });
 }

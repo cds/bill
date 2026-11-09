@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -65,23 +65,27 @@ export default async function SalesPage() {
               statusBadge = <Badge variant="default" className="bg-green-600 hover:bg-green-700">Paid</Badge>;
             }
 
+            const isVoided = Boolean(invoice.deleted_at);
             return (
               <Link key={invoice.id} href={`/sales/${invoice.id}`}>
-                <Card className="hover:bg-muted/50 transition-colors">
+                <Card className={`hover:bg-muted/50 transition-colors ${isVoided ? 'border-destructive/30 bg-muted/30' : ''}`}>
                   <CardContent className="p-4 flex flex-col space-y-2">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-bold">#{invoice.invoice_number}</p>
-                        <p className="text-sm text-muted-foreground">{formatDate(invoice.invoice_date)}</p>
+                        <p className={`font-bold ${isVoided ? 'line-through text-muted-foreground' : ''}`}>#{invoice.invoice_number}</p>
+                        <p className={`text-sm text-muted-foreground ${isVoided ? 'line-through' : ''}`}>{formatDate(invoice.invoice_date)}</p>
                       </div>
-                      {statusBadge}
+                      {isVoided ? <Badge variant="destructive">Voided</Badge> : statusBadge}
                     </div>
                     <div>
-                      <p className="text-sm font-medium line-clamp-1">{invoice.party_name}</p>
+                      <p className={`text-sm font-medium line-clamp-1 ${isVoided ? 'line-through text-muted-foreground' : ''}`}>{invoice.party_name}</p>
+                      {isVoided && invoice.deleted_reason && (
+                        <p className="mt-1 line-clamp-2 text-xs text-destructive">{invoice.deleted_reason}</p>
+                      )}
                     </div>
                     <div className="flex justify-between items-center pt-2">
-                      <p className="text-sm text-muted-foreground capitalize">{invoice.payment_type}</p>
-                      <p className="font-bold">{formatCurrency(invoice.total_amount)}</p>
+                      <p className={`text-sm text-muted-foreground capitalize ${isVoided ? 'line-through' : ''}`}>{invoice.payment_type}</p>
+                      <p className={`font-bold ${isVoided ? 'line-through text-muted-foreground' : ''}`}>{formatCurrency(invoice.total_amount)}</p>
                     </div>
                   </CardContent>
                 </Card>

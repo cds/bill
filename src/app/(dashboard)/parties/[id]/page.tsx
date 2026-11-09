@@ -2,10 +2,9 @@ import { createClient } from '@/lib/supabase/server';
 import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/shared/page-header';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUp, ArrowDown, MapPin, Phone, Pencil, Trash } from 'lucide-react';
+import { ArrowUp, ArrowDown, MapPin, Phone } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Table,
@@ -17,6 +16,8 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { FileText } from 'lucide-react';
+import { headers } from 'next/headers';
+import { PartyDetailActions } from '@/components/parties/party-detail-actions';
 
 export default async function PartyDetailPage({
   params,
@@ -26,6 +27,7 @@ export default async function PartyDetailPage({
   const { id } = await params;
   const supabase = await createClient();
   const tenantId = await getActiveTenantId();
+  const requestHeaders = await headers();
 
   const { data: party, error: partyError } = await supabase
     .from('parties')
@@ -37,6 +39,8 @@ export default async function PartyDetailPage({
   if (partyError || !party) {
     notFound();
   }
+  const canDiscardRecords = requestHeaders.get('x-tenant-role') === 'tenant_admin' ||
+    requestHeaders.get('x-system-role') === 'super_admin';
 
   const { data: invoices, error: invoicesError } = await supabase
     .from('invoices')
@@ -44,6 +48,10 @@ export default async function PartyDetailPage({
     .eq('party_id', id)
     .eq('tenant_id', tenantId)
     .order('invoice_date', { ascending: false });
+
+  if (invoicesError) {
+    throw new Error(`Failed to load party invoice history: ${invoicesError.message}`);
+  }
 
   const renderBalance = (balance: number) => {
     if (!balance || balance === 0)
@@ -68,19 +76,17 @@ export default async function PartyDetailPage({
     <div className="container mx-auto py-8 space-y-6">
       <PageHeader
         title={party.name}
-        action={
-          <div className="flex space-x-2">
-            <Button variant="outline" size="sm">
-              <Pencil className="w-4 h-4 mr-2" />
-              Edit
-            </Button>
-            <Button variant="destructive" size="sm">
-              <Trash className="w-4 h-4 mr-2" />
-              Delete
-            </Button>
-          </div>
-        }
+        action={party.deleted_at ? null : (
+          <PartyDetailActions party={party} canDiscardRecords={canDiscardRecords} />
+        )}
       />
+
+      {party.deleted_at && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <p className="font-semibold text-destructive">Discarded party</p>
+          {party.deleted_reason && <p className="mt-1 text-muted-foreground">Reason: {party.deleted_reason}</p>}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="md:col-span-2">
@@ -139,18 +145,19 @@ export default async function PartyDetailPage({
               </TableHeader>
               <TableBody>
                 {invoices.map((inv) => {
+                  const isVoided = Boolean(inv.deleted_at);
                   const isPaid = inv.payment_type === 'cash' || Number(inv.balance_due) === 0;
                   const isPartial = Number(inv.amount_paid) > 0 && Number(inv.balance_due) > 0;
                   return (
-                    <TableRow key={inv.id}>
-                      <TableCell className="font-medium">#{inv.invoice_number}</TableCell>
+                    <TableRow key={inv.id} className={isVoided ? 'text-muted-foreground' : ''}>
+                      <TableCell className={`font-medium ${isVoided ? 'line-through' : ''}`}>#{inv.invoice_number}</TableCell>
                       <TableCell>{formatDate(inv.invoice_date)}</TableCell>
                       <TableCell>
-                        <Badge variant={isPaid ? 'default' : isPartial ? 'secondary' : 'destructive'}>
-                          {isPaid ? 'Paid' : isPartial ? 'Partial' : 'Unpaid'}
+                        <Badge variant={isVoided ? 'outline' : isPaid ? 'default' : isPartial ? 'secondary' : 'destructive'}>
+                          {isVoided ? 'Voided' : isPaid ? 'Paid' : isPartial ? 'Partial' : 'Unpaid'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">{formatCurrency(inv.total_amount)}</TableCell>
+                      <TableCell className={`text-right ${isVoided ? 'line-through' : ''}`}>{formatCurrency(inv.total_amount)}</TableCell>
                     </TableRow>
                   );
                 })}

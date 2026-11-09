@@ -53,6 +53,7 @@ export default async function PartyStatementPage({
       .select('total_amount, amount_paid')
       .eq('party_id', party_id)
       .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
       .lt('invoice_date', start);
 
     openingBalance = previousInvoices?.reduce((sum, inv) => sum + (inv.total_amount - inv.amount_paid), 0) || 0;
@@ -69,7 +70,9 @@ export default async function PartyStatementPage({
       .order('invoice_number', { ascending: true });
 
     invoices = periodInvoices || [];
-    closingBalance = openingBalance + invoices.reduce((sum, inv) => sum + (inv.total_amount - inv.amount_paid), 0);
+    closingBalance = openingBalance + invoices
+      .filter((invoice) => !invoice.deleted_at)
+      .reduce((sum, inv) => sum + (inv.total_amount - inv.amount_paid), 0);
   }
 
   return (
@@ -158,14 +161,20 @@ export default async function PartyStatementPage({
                         let runningBalance = openingBalance;
                         return invoices.map((inv) => {
                           const balanceDue = inv.total_amount - inv.amount_paid;
-                          runningBalance += balanceDue;
-                          
+                          const isVoided = Boolean(inv.deleted_at);
+                          if (!isVoided) runningBalance += balanceDue;
+
                           return (
-                            <TableRow key={inv.id}>
-                              <TableCell>{formatDate(inv.invoice_date)}</TableCell>
-                              <TableCell>INV-{inv.invoice_number.toString().padStart(4, '0')}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(inv.total_amount)}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(inv.amount_paid)}</TableCell>
+                            <TableRow key={inv.id} className={isVoided ? 'text-muted-foreground' : ''}>
+                              <TableCell className={isVoided ? 'line-through' : ''}>{formatDate(inv.invoice_date)}</TableCell>
+                              <TableCell className={isVoided ? 'line-through' : ''}>
+                                INV-{inv.invoice_number.toString().padStart(4, '0')}
+                                {isVoided && (
+                                  <span className="ml-2 text-xs font-medium text-destructive">Voided</span>
+                                )}
+                              </TableCell>
+                              <TableCell className={`text-right ${isVoided ? 'line-through' : ''}`}>{formatCurrency(inv.total_amount)}</TableCell>
+                              <TableCell className={`text-right ${isVoided ? 'line-through' : ''}`}>{formatCurrency(inv.amount_paid)}</TableCell>
                               <TableCell className="text-right font-medium">{formatCurrency(runningBalance)}</TableCell>
                             </TableRow>
                           );

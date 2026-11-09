@@ -11,33 +11,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { StockAdjustmentModal } from '@/components/items/stock-adjustment-modal'
 import { Badge } from '@/components/ui/badge'
+import { DiscardRecordDialog } from '@/components/shared/discard-record-dialog'
+import type { Item, StockAdjustment } from '@/lib/supabase/types'
 
 interface ItemDetailClientProps {
-  item: any
-  stockAdjustments: any[]
+  item: Item & { deleted_at: string | null; deleted_reason: string | null }
+  stockAdjustments: StockAdjustment[]
+  canManageRecords: boolean
 }
 
-export function ItemDetailClient({ item, stockAdjustments }: ItemDetailClientProps) {
+export function ItemDetailClient({ item, stockAdjustments, canManageRecords }: ItemDetailClientProps) {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isAdjustOpen, setIsAdjustOpen] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
+  const [isDiscardOpen, setIsDiscardOpen] = useState(false)
   const router = useRouter()
 
-  const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this item?')) return
-    
-    setIsDeleting(true)
-    try {
-      const res = await fetch(`/api/items/${item.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete')
-      
-      router.push('/items')
-      router.refresh()
-    } catch (error) {
-      console.error(error)
-      alert('Error deleting item')
-      setIsDeleting(false)
-    }
+  const handleDiscard = async (reason: string) => {
+    const response = await fetch(`/api/items/${item.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error || 'Failed to discard item')
+    router.refresh()
   }
 
   const stockValue = item.current_stock * item.purchase_price
@@ -47,22 +44,33 @@ export function ItemDetailClient({ item, stockAdjustments }: ItemDetailClientPro
       <PageHeader 
         title={item.name} 
         action={
-          <div className="flex gap-2">
-            <Button onClick={() => setIsAdjustOpen(true)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Adjust Stock
-            </Button>
-            <Button variant="outline" onClick={() => setIsEditOpen(true)}>
-              <Pencil className="w-4 h-4 mr-2" />
-              Edit
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              <Trash2 className="w-4 h-4 mr-2" />
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </div>
+          item.deleted_at ? (
+            <Badge variant="destructive">Discarded</Badge>
+          ) : (
+            <div className="flex gap-2">
+              <Button onClick={() => setIsAdjustOpen(true)} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Adjust Stock
+              </Button>
+              <Button variant="outline" onClick={() => setIsEditOpen(true)}>
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit
+              </Button>
+              {canManageRecords && (
+                <Button variant="destructive" onClick={() => setIsDiscardOpen(true)}>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Discard
+                </Button>
+              )}
+            </div>
+          )
         } 
       />
+      {item.deleted_at && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          This item is discarded{item.deleted_reason ? `: ${item.deleted_reason}` : ''}. It remains visible in history but cannot be used for new sales or stock adjustments.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
@@ -144,13 +152,15 @@ export function ItemDetailClient({ item, stockAdjustments }: ItemDetailClientPro
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate" title={adj.notes}>{adj.notes || '-'}</TableCell>
+                    <TableCell className="max-w-[200px] truncate" title={adj.notes ?? undefined}>{adj.notes || '-'}</TableCell>
                     <TableCell className={`text-right font-medium ${adj.type === 'add' ? 'text-green-600' : 'text-red-600'}`}>
                       {adj.type === 'add' ? '+' : '-'}{adj.quantity}
                     </TableCell>
-                    <TableCell className="text-right">{formatCurrency(adj.unit_cost)}</TableCell>
+                    <TableCell className="text-right">
+                      {adj.unit_cost == null ? '-' : formatCurrency(adj.unit_cost)}
+                    </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatCurrency(adj.quantity * adj.unit_cost)}
+                      {adj.unit_cost == null ? '-' : formatCurrency(adj.quantity * adj.unit_cost)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -164,20 +174,30 @@ export function ItemDetailClient({ item, stockAdjustments }: ItemDetailClientPro
         </CardContent>
       </Card>
 
-      <ItemForm 
-        item={item}
-        open={isEditOpen} 
-        onOpenChange={setIsEditOpen} 
-        onSaved={() => router.refresh()} 
-      />
+      {!item.deleted_at && (
+        <>
+          <ItemForm
+            item={item}
+            open={isEditOpen}
+            onOpenChange={setIsEditOpen}
+            onSaved={() => router.refresh()}
+          />
 
-      <StockAdjustmentModal
-        item_id={item.id}
-        item_name={item.name}
-        purchase_price={item.purchase_price}
-        open={isAdjustOpen}
-        onOpenChange={setIsAdjustOpen}
-        onSaved={() => router.refresh()}
+          <StockAdjustmentModal
+            item_id={item.id}
+            item_name={item.name}
+            purchase_price={item.purchase_price}
+            open={isAdjustOpen}
+            onOpenChange={setIsAdjustOpen}
+            onSaved={() => router.refresh()}
+          />
+        </>
+      )}
+      <DiscardRecordDialog
+        open={isDiscardOpen}
+        onOpenChange={setIsDiscardOpen}
+        recordName="item"
+        onConfirm={handleDiscard}
       />
     </div>
   )

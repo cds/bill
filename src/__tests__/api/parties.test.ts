@@ -50,7 +50,7 @@ function makeChain(resolved: { data: unknown; error: unknown }) {
   const methods = [
     'select', 'insert', 'update', 'delete', 'eq', 'neq',
     'order', 'limit', 'ilike', 'single', 'maybeSingle',
-    'filter', 'match', 'in', 'or'
+    'filter', 'match', 'in', 'or', 'is'
   ]
   for (const m of methods) {
     chain[m] = vi.fn().mockReturnThis()
@@ -305,17 +305,26 @@ describe('PATCH /api/parties/[id]', () => {
   // P-16
   it('P-16: Updates party and returns updated record (200)', async () => {
     const updated = { id: PARTY_ID, name: 'Acme Updated', phone: '9999999999' }
-    mockFrom = vi.fn().mockReturnValue(makeChain({ data: updated, error: null }))
+    let updatePayload: Record<string, unknown> | null = null
+    mockFrom = vi.fn().mockImplementation(() => {
+      const chain = makeChain({ data: updated, error: null })
+      chain.update = vi.fn().mockImplementation((payload) => {
+        updatePayload = payload
+        return chain
+      })
+      return chain
+    })
 
     const req = new NextRequest(`http://localhost/api/parties/${PARTY_ID}`, {
       method: 'PATCH',
-      body: JSON.stringify({ name: 'Acme Updated', phone: '9999999999' }),
+      body: JSON.stringify({ name: 'Acme Updated', phone: '9999999999', reason: 'Correcting contact details' }),
     })
     const res = await updateParty(req, { params: Promise.resolve({ id: PARTY_ID }) })
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.name).toBe('Acme Updated')
+    expect(updatePayload?.change_reason).toBe('Correcting contact details')
   })
 
   // P-17
@@ -324,7 +333,7 @@ describe('PATCH /api/parties/[id]', () => {
 
     const req = new NextRequest(`http://localhost/api/parties/${PARTY_ID}`, {
       method: 'PATCH',
-      body: JSON.stringify({ name: 'Failing Update' }),
+      body: JSON.stringify({ name: 'Failing Update', reason: 'Correcting party name' }),
     })
     const res = await updateParty(req, { params: Promise.resolve({ id: PARTY_ID }) })
     const body = await res.json()
@@ -340,77 +349,73 @@ describe('DELETE /api/parties/[id]', () => {
   })
 
   // P-18
-  it('P-18: Rejects delete with 400 when party has existing invoices', async () => {
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        return makeChain({ data: [{ id: 'invoice-1' }], error: null })
-      }
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/parties/${PARTY_ID}`, { method: 'DELETE' })
-    const res = await deleteParty(req, { params: Promise.resolve({ id: PARTY_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(400)
-    expect(body.error).toBe('Cannot delete party with existing invoices')
-  })
-
-  // P-19 & P-22
-  it('P-19 & P-22: Deletes party with 204 when no invoices exist (Business User & Worker)', async () => {
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        return makeChain({ data: [], error: null })
-      }
-      if (table === 'parties') {
-        return makeChain({ data: null, error: null })
-      }
-      return makeChain({ data: null, error: null })
+  it('P-18: Discards a party without removing its invoice history', async () => {
+    let updatePayload: Record<string, unknown> | null = null
+    mockFrom = vi.fn().mockImplementation(() => {
+      const chain = makeChain({ data: { id: PARTY_ID }, error: null })
+      chain.update = vi.fn().mockImplementation((payload) => {
+        updatePayload = payload
+        return chain
+      })
+      return chain
     })
 
     const req = new NextRequest(`http://localhost/api/parties/${PARTY_ID}`, {
       method: 'DELETE',
-      headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'worker' },
+      body: JSON.stringify({ reason: 'Customer account closed' }),
+    })
+    const res = await deleteParty(req, { params: Promise.resolve({ id: PARTY_ID }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body).toEqual({ success: true })
+    expect(updatePayload?.deleted_reason).toBe('Customer account closed')
+  })
+
+  // P-19 & P-22
+  it('P-19 & P-22: Discards party for a tenant administrator', async () => {
+    mockFrom = vi.fn().mockReturnValue(makeChain({ data: { id: PARTY_ID }, error: null }))
+
+    const req = new NextRequest(`http://localhost/api/parties/${PARTY_ID}`, {
+      method: 'DELETE',
+      headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'tenant_admin' },
+      body: JSON.stringify({ reason: 'Duplicate record' }),
     })
     const res = await deleteParty(req, { params: Promise.resolve({ id: PARTY_ID }) })
 
-    expect(res.status).toBe(204)
+    expect(res.status).toBe(200)
   })
 
   // P-20
-  it('P-20: Returns 500 when checking for linked invoices fails', async () => {
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        return makeChain({ data: null, error: { message: 'Invoices check failure' } })
-      }
-      return makeChain({ data: null, error: null })
-    })
+  it('P-20: Returns 403 when a non-admin cannot discard a party', async () => {
+    mockFrom = vi.fn().mockReturnValue(
+      makeChain({ data: null, error: { code: '42501', message: 'Permission denied' } })
+    )
 
-    const req = new NextRequest(`http://localhost/api/parties/${PARTY_ID}`, { method: 'DELETE' })
+    const req = new NextRequest(`http://localhost/api/parties/${PARTY_ID}`, {
+      method: 'DELETE',
+      headers: { 'x-tenant-role': 'worker' },
+      body: JSON.stringify({ reason: 'Duplicate record' }),
+    })
     const res = await deleteParty(req, { params: Promise.resolve({ id: PARTY_ID }) })
     const body = await res.json()
 
-    expect(res.status).toBe(500)
-    expect(body.error).toBe('Invoices check failure')
+    expect(res.status).toBe(403)
+    expect(body.error).toBe('Permission denied')
   })
 
   // P-21
-  it('P-21: Returns 500 when party delete query fails', async () => {
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        return makeChain({ data: [], error: null })
-      }
-      if (table === 'parties') {
-        return makeChain({ data: null, error: { message: 'Delete party failed' } })
-      }
-      return makeChain({ data: null, error: null })
-    })
+  it('P-21: Returns 500 when party discard query fails', async () => {
+    mockFrom = vi.fn().mockReturnValue(makeChain({ data: null, error: { message: 'Discard party failed' } }))
 
-    const req = new NextRequest(`http://localhost/api/parties/${PARTY_ID}`, { method: 'DELETE' })
+    const req = new NextRequest(`http://localhost/api/parties/${PARTY_ID}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason: 'Duplicate record' }),
+    })
     const res = await deleteParty(req, { params: Promise.resolve({ id: PARTY_ID }) })
     const body = await res.json()
 
     expect(res.status).toBe(500)
-    expect(body.error).toBe('Delete party failed')
+    expect(body.error).toBe('Discard party failed')
   })
 })

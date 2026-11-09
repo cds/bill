@@ -29,6 +29,7 @@ type AuditLog = {
   action: 'INSERT' | 'UPDATE' | 'SOFT_DELETE';
   old_data: Record<string, unknown> | null;
   new_data: Record<string, unknown> | null;
+  reason: string | null;
   created_at: string;
   created_at_label: string;
   tenants: { name: string } | null;
@@ -210,6 +211,13 @@ function AuditLogDetails({
           </p>
         )}
       </section>
+
+      {log.reason && (
+        <section>
+          <h3 className="mb-1 text-sm font-semibold">Reason</h3>
+          <p className="rounded-lg border p-3 text-sm whitespace-pre-wrap">{log.reason}</p>
+        </section>
+      )}
 
       {log.table_name === 'invoices' && (
         <section>

@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search')
   const supabase = await createClient()
 
-  let query = supabase.from('items').select('*').eq('tenant_id', tenantId).order('name')
+  let query = supabase.from('items').select('*').eq('tenant_id', tenantId).is('deleted_at', null).order('name')
   
   if (search) {
     query = query.ilike('name', `%${search}%`)

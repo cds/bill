@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Expense } from '@/lib/supabase/types';
-import { Plus, Receipt, IndianRupee } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import type { Expense } from '@/lib/supabase/types';
+import { Edit, Plus, Receipt, IndianRupee, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatCard } from '@/components/shared/stat-card';
 import { Button } from '@/components/ui/button';
@@ -18,15 +19,35 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ExpenseForm } from './expense-form';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { DiscardRecordDialog } from '@/components/shared/discard-record-dialog';
 
 interface ExpenseListClientProps {
-  expenses: Expense[];
+  expenses: Array<Expense & { deleted_at?: string | null; deleted_reason?: string | null }>;
+  canManageRecords: boolean;
 }
 
-export function ExpenseListClient({ expenses }: ExpenseListClientProps) {
+export function ExpenseListClient({ expenses, canManageRecords }: ExpenseListClientProps) {
+  const router = useRouter();
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [expenseToEdit, setExpenseToEdit] = useState<Expense | undefined>();
+  const [expenseToDiscard, setExpenseToDiscard] = useState<Expense | null>(null);
 
-  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalExpenses = expenses
+    .filter((expense) => !expense.deleted_at)
+    .reduce((sum, expense) => sum + expense.amount, 0);
+
+  const discardExpense = async (reason: string) => {
+    if (!expenseToDiscard) return;
+    const response = await fetch(`/api/expenses/${expenseToDiscard.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Failed to discard expense');
+    setExpenseToDiscard(null);
+    router.refresh();
+  };
 
   return (
     <div className="flex flex-col h-full pb-20 md:pb-0">
@@ -34,7 +55,10 @@ export function ExpenseListClient({ expenses }: ExpenseListClientProps) {
         title="Expenses"
         description="Manage your business expenses"
         action={
-          <Button onClick={() => setIsFormOpen(true)}>
+          <Button onClick={() => {
+            setExpenseToEdit(undefined);
+            setIsFormOpen(true);
+          }}>
             <Plus className="mr-2 h-4 w-4" />
             Add Expense
           </Button>
@@ -77,27 +101,64 @@ export function ExpenseListClient({ expenses }: ExpenseListClientProps) {
                       <TableHead>Mode</TableHead>
                       <TableHead>Notes</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {expenses.map((expense) => (
                       <TableRow key={expense.id}>
                         <TableCell className="whitespace-nowrap">
-                          {formatDate(expense.date)}
+                          <span className={expense.deleted_at ? 'line-through text-muted-foreground' : ''}>
+                            {formatDate(expense.date)}
+                          </span>
                         </TableCell>
                         <TableCell>
-                          <span className="font-medium">{expense.category}</span>
+                          <span className={expense.deleted_at ? 'font-medium line-through text-muted-foreground' : 'font-medium'}>
+                            {expense.category}
+                          </span>
+                          {expense.deleted_at && (
+                            <span className="ml-2 text-xs font-medium text-destructive">
+                              Discarded{expense.deleted_reason ? `: ${expense.deleted_reason}` : ''}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="capitalize">
+                          <Badge variant={expense.deleted_at ? 'outline' : 'secondary'} className={`capitalize ${expense.deleted_at ? 'line-through text-muted-foreground' : ''}`}>
                             {expense.payment_mode}
                           </Badge>
                         </TableCell>
-                        <TableCell className="max-w-[200px] truncate">
+                        <TableCell className={`max-w-[200px] truncate ${expense.deleted_at ? 'line-through text-muted-foreground' : ''}`}>
                           {expense.notes || '-'}
                         </TableCell>
-                        <TableCell className="text-right font-medium">
+                        <TableCell className={`text-right font-medium ${expense.deleted_at ? 'line-through text-muted-foreground' : ''}`}>
                           {formatCurrency(expense.amount)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {!expense.deleted_at && (
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Edit ${expense.category} expense`}
+                                onClick={() => {
+                                  setExpenseToEdit(expense);
+                                  setIsFormOpen(true);
+                                }}
+                              >
+                                <Edit className="size-4" />
+                              </Button>
+                              {canManageRecords && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label={`Discard ${expense.category} expense`}
+                                  onClick={() => setExpenseToDiscard(expense)}
+                                >
+                                  <Trash2 className="size-4 text-destructive" />
+                                </Button>
+                              )}
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -109,7 +170,20 @@ export function ExpenseListClient({ expenses }: ExpenseListClientProps) {
         </Card>
       </div>
 
-      <ExpenseForm open={isFormOpen} onOpenChange={setIsFormOpen} />
+      <ExpenseForm
+        key={expenseToEdit?.id ?? 'new'}
+        expense={expenseToEdit}
+        open={isFormOpen}
+        onOpenChange={setIsFormOpen}
+      />
+      <DiscardRecordDialog
+        open={expenseToDiscard !== null}
+        onOpenChange={(open) => {
+          if (!open) setExpenseToDiscard(null);
+        }}
+        recordName="expense"
+        onConfirm={discardExpense}
+      />
       
       {/* Mobile FAB */}
       <div className="md:hidden fixed bottom-20 right-4 z-10">

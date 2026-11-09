@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import type { Expense } from '@/lib/supabase/types';
 import {
   Select,
   SelectContent,
@@ -35,9 +36,10 @@ const CATEGORIES = [
 interface ExpenseFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  expense?: Expense;
 }
 
-export function ExpenseForm({ open, onOpenChange }: ExpenseFormProps) {
+export function ExpenseForm({ open, onOpenChange, expense }: ExpenseFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,11 +56,12 @@ export function ExpenseForm({ open, onOpenChange }: ExpenseFormProps) {
       amount: formData.get('amount'),
       payment_mode: formData.get('payment_mode'),
       notes: formData.get('notes'),
+      reason: formData.get('reason'),
     };
 
     try {
-      const res = await fetch('/api/expenses', {
-        method: 'POST',
+      const res = await fetch(expense ? `/api/expenses/${expense.id}` : '/api/expenses', {
+        method: expense ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -67,13 +70,13 @@ export function ExpenseForm({ open, onOpenChange }: ExpenseFormProps) {
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to create expense');
+        throw new Error(errorData.error || `Failed to ${expense ? 'update' : 'create'} expense`);
       }
 
       onOpenChange(false);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save expense');
     } finally {
       setIsSubmitting(false);
     }
@@ -83,9 +86,9 @@ export function ExpenseForm({ open, onOpenChange }: ExpenseFormProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Add Expense</DialogTitle>
+          <DialogTitle>{expense ? 'Edit Expense' : 'Add Expense'}</DialogTitle>
           <DialogDescription>
-            Enter the details of your new expense.
+            {expense ? 'Update this expense and record why it changed.' : 'Enter the details of your new expense.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4 pt-4">
@@ -98,13 +101,13 @@ export function ExpenseForm({ open, onOpenChange }: ExpenseFormProps) {
               name="date"
               type="date"
               required
-              defaultValue={new Date().toISOString().split('T')[0]}
+              defaultValue={expense?.date ?? new Date().toISOString().split('T')[0]}
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="category">Category</Label>
-            <Select name="category" required>
+            <Select name="category" required defaultValue={expense?.category}>
               <SelectTrigger>
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
@@ -119,20 +122,8 @@ export function ExpenseForm({ open, onOpenChange }: ExpenseFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="amount">Amount (₹)</Label>
-            <Input
-              id="amount"
-              name="amount"
-              type="number"
-              step="0.01"
-              required
-              placeholder="0.00"
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label htmlFor="payment_mode">Payment Mode</Label>
-            <Select name="payment_mode" required defaultValue="cash">
+            <Select name="payment_mode" required defaultValue={expense?.payment_mode ?? 'cash'}>
               <SelectTrigger>
                 <SelectValue placeholder="Select mode" />
               </SelectTrigger>
@@ -152,8 +143,30 @@ export function ExpenseForm({ open, onOpenChange }: ExpenseFormProps) {
               placeholder="Optional notes..."
               className="resize-none"
               rows={3}
+              defaultValue={expense?.notes ?? ''}
             />
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="amount">Amount (₹)</Label>
+            <Input
+              id="amount"
+              name="amount"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              placeholder="0.00"
+              defaultValue={expense?.amount}
+            />
+          </div>
+
+          {expense && (
+            <div className="space-y-2">
+              <Label htmlFor="reason">Reason for change (required)</Label>
+              <Textarea id="reason" name="reason" required maxLength={500} rows={2} />
+            </div>
+          )}
 
           <DialogFooter>
             <Button
@@ -165,7 +178,7 @@ export function ExpenseForm({ open, onOpenChange }: ExpenseFormProps) {
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : 'Save Expense'}
+              {isSubmitting ? 'Saving...' : expense ? 'Update Expense' : 'Save Expense'}
             </Button>
           </DialogFooter>
         </form>

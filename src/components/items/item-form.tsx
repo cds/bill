@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import type { Item } from '@/lib/supabase/types'
+import { toast } from 'sonner'
 
 export function ItemForm({ 
   item, 
@@ -14,7 +17,7 @@ export function ItemForm({
   onOpenChange, 
   onSaved 
 }: { 
-  item?: any
+  item?: Item & { deleted_at?: string | null }
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: () => void 
@@ -34,6 +37,7 @@ export function ItemForm({
       purchase_price: Number(formData.get('purchase_price')),
       opening_stock: Number(formData.get('opening_stock')),
       low_stock_threshold: Number(formData.get('low_stock_threshold')),
+      reason: item ? formData.get('reason') : undefined,
     }
 
     try {
@@ -46,14 +50,16 @@ export function ItemForm({
         body: JSON.stringify(data),
       })
 
-      if (!res.ok) throw new Error('Failed to save')
+      if (!res.ok) {
+        const result = await res.json()
+        throw new Error(result.error || 'Failed to save item')
+      }
 
       onSaved()
       onOpenChange(false)
       router.refresh()
     } catch (error) {
-      console.error(error)
-      alert('Error saving item')
+      toast.error(error instanceof Error ? error.message : 'Error saving item')
     } finally {
       setLoading(false)
     }
@@ -105,6 +111,18 @@ export function ItemForm({
               <Input id="low_stock_threshold" name="low_stock_threshold" type="number" required defaultValue={item?.low_stock_threshold || 0} />
             </div>
           </div>
+          {item && (
+            <div className="space-y-2">
+              <Label htmlFor="item-change-reason">Reason for change (required)</Label>
+              <Textarea
+                id="item-change-reason"
+                name="reason"
+                required
+                maxLength={500}
+                rows={2}
+              />
+            </div>
+          )}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Saving...' : 'Save Item'}
           </Button>

@@ -31,10 +31,10 @@ export default async function DashboardPage() {
     { data: invoices },
     { data: expenses },
   ] = await Promise.all([
-    supabase.from('items').select('id, name, current_stock, purchase_price, low_stock_threshold, unit').eq('tenant_id', tenantId),
+    supabase.from('items').select('id, name, current_stock, purchase_price, low_stock_threshold, unit').eq('tenant_id', tenantId).is('deleted_at', null),
     supabase.from('parties').select('id, type, balance').eq('tenant_id', tenantId),
-    supabase.from('invoices').select('invoice_date, total_amount, amount_paid').eq('tenant_id', tenantId),
-    supabase.from('expenses').select('amount, payment_status, payment_mode').eq('tenant_id', tenantId),
+    supabase.from('invoices').select('invoice_date, total_amount, amount_paid').eq('tenant_id', tenantId).is('deleted_at', null),
+    supabase.from('expenses').select('amount, payment_status, payment_mode').eq('tenant_id', tenantId).is('deleted_at', null),
   ]);
 
   // Calculate stats
@@ -206,6 +206,7 @@ async function RecentTransactions() {
     .from('invoices')
     .select('id, invoice_number, invoice_date, party_name, total_amount, balance_due, amount_paid')
     .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(5);
 

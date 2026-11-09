@@ -17,6 +17,8 @@ import { ItemSelector } from './item-selector';
 import { ArrowLeft, Plus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { Invoice } from '@/lib/supabase/types';
+import type { Item } from '@/lib/supabase/types';
 
 type LineItem = {
   tempId: string;
@@ -53,17 +55,41 @@ type Action =
   | { type: 'SET_NOTES'; payload: string }
   | { type: 'RESET' };
 
-const getInitialState = (): InvoiceFormState => {
+type ExistingInvoiceItem = {
+  id: string;
+  item_id: string | null;
+  item_name: string;
+  quantity: number;
+  unit: string;
+  rate: number;
+  tax_percent: number;
+  discount_percent: number;
+  deleted_at: string | null;
+};
+
+const getInitialState = (
+  invoice?: Invoice,
+  invoiceItems: ExistingInvoiceItem[] = [],
+): InvoiceFormState => {
   const now = new Date();
   return {
-    invoice_date: now.toISOString().split('T')[0],
+    invoice_date: invoice?.invoice_date ?? now.toISOString().split('T')[0],
     invoice_time: now.toTimeString().slice(0, 5),
-    payment_type: 'cash',
-    payment_method: 'cash',
-    party: null,
-    lineItems: [],
-    amount_paid: 0,
-    notes: '',
+    payment_type: invoice?.payment_type ?? 'cash',
+    payment_method: invoice?.payment_method ?? 'cash',
+    party: invoice?.party_id ? { id: invoice.party_id, name: invoice.party_name } : null,
+    lineItems: invoiceItems.filter((item) => !item.deleted_at).map((item) => ({
+      tempId: tempId(),
+      item_id: item.item_id,
+      item_name: item.item_name,
+      quantity: Number(item.quantity),
+      unit: item.unit,
+      rate: Number(item.rate),
+      tax_percent: Number(item.tax_percent),
+      discount_percent: Number(item.discount_percent),
+    })),
+    amount_paid: Number(invoice?.amount_paid ?? 0),
+    notes: invoice?.notes ?? '',
   };
 };
 
@@ -111,31 +137,42 @@ function reducer(state: InvoiceFormState, action: Action): InvoiceFormState {
   }
 }
 
-export function InvoiceForm() {
+export function InvoiceForm({
+  invoice,
+  invoiceItems = [],
+}: {
+  invoice?: Invoice;
+  invoiceItems?: ExistingInvoiceItem[];
+}) {
   const router = useRouter();
-  const [state, dispatch] = useReducer(reducer, getInitialState());
+  const [state, dispatch] = useReducer(
+    reducer,
+    { invoice, invoiceItems },
+    ({ invoice: initialInvoice, invoiceItems: initialItems }) => getInitialState(initialInvoice, initialItems),
+  );
   const [isItemSelectorOpen, setIsItemSelectorOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [changeReason, setChangeReason] = useState('');
 
   // Auto-calculations
-  let subtotal = 0;
-  let totalTax = 0;
-  let totalDiscount = 0;
-
   const itemsWithAmounts = state.lineItems.map((item) => {
     const baseAmount = item.quantity * item.rate;
     const discountAmount = baseAmount * (item.discount_percent / 100);
     const afterDiscount = baseAmount - discountAmount;
     const taxAmount = afterDiscount * (item.tax_percent / 100);
-    const lineTotal = afterDiscount + taxAmount;
 
-    subtotal += baseAmount;
-    totalDiscount += discountAmount;
-    totalTax += taxAmount;
-
-    return { ...item, amount: lineTotal };
+    return {
+      ...item,
+      amount: afterDiscount + taxAmount,
+      baseAmount,
+      taxAmount,
+      discountAmount,
+    };
   });
 
+  const subtotal = itemsWithAmounts.reduce((total, item) => total + item.baseAmount, 0);
+  const totalDiscount = itemsWithAmounts.reduce((total, item) => total + item.discountAmount, 0);
+  const totalTax = itemsWithAmounts.reduce((total, item) => total + item.taxAmount, 0);
   const grandTotal = subtotal - totalDiscount + totalTax;
   
   // For cash payments, assume fully paid unless explicitly changed if we wanted, 
@@ -144,7 +181,7 @@ export function InvoiceForm() {
   const actualAmountPaid = state.payment_type === 'cash' ? grandTotal : state.amount_paid;
   const balanceDue = Math.max(0, grandTotal - actualAmountPaid);
 
-  const handleSelectItem = (item: any) => {
+  const handleSelectItem = (item: Pick<Item, 'id' | 'name' | 'unit' | 'sale_price'>) => {
     dispatch({
       type: 'ADD_ITEM',
       payload: {
@@ -169,6 +206,10 @@ export function InvoiceForm() {
       toast.error('Please add at least one item.');
       return;
     }
+    if (invoice && !changeReason.trim()) {
+      toast.error('Please provide a reason for changing this sale.');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -185,6 +226,7 @@ export function InvoiceForm() {
         amount_paid: actualAmountPaid,
         balance_due: balanceDue,
         notes: state.notes,
+        reason: changeReason,
         items: itemsWithAmounts.map(i => ({
           item_id: i.item_id,
           item_name: i.item_name,
@@ -196,28 +238,28 @@ export function InvoiceForm() {
         }))
       };
 
-      const res = await fetch('/api/invoices', {
-        method: 'POST',
+      const res = await fetch(invoice ? `/api/invoices/${invoice.id}` : '/api/invoices', {
+        method: invoice ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Failed to save invoice');
+        throw new Error(err.error || `Failed to ${invoice ? 'update' : 'save'} sale`);
       }
 
-      const data = await res.json();
+      const data = await res.json() as { id: string };
       
-      toast.success('Invoice saved successfully');
+      toast.success(invoice ? 'Sale updated successfully' : 'Invoice saved successfully');
       
-      if (saveAndNew) {
+      if (!invoice && saveAndNew) {
         dispatch({ type: 'RESET' });
       } else {
-        router.push(`/sales/${data.id}`);
+        router.push(`/sales/${invoice?.id ?? data.id}`);
       }
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save sale');
     } finally {
       setIsSubmitting(false);
     }
@@ -230,7 +272,7 @@ export function InvoiceForm() {
           <Link href="/sales" className={buttonVariants({ variant: "ghost", size: "icon" })}>
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight">New Sale</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{invoice ? `Edit Sale #${invoice.invoice_number}` : 'New Sale'}</h1>
         </div>
       </div>
 
@@ -307,7 +349,7 @@ export function InvoiceForm() {
             <div className="divide-y">
               {itemsWithAmounts.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground text-sm">
-                  No items added yet. Click 'Add Item' to start.
+                  No items added yet. Click &apos;Add Item&apos; to start.
                 </div>
               ) : (
                 itemsWithAmounts.map((item) => (
@@ -382,19 +424,37 @@ export function InvoiceForm() {
             />
           </CardContent>
         </Card>
+        {invoice && (
+          <Card>
+            <CardContent className="p-6">
+              <Label htmlFor="sale-change-reason">Reason for change (required)</Label>
+              <Textarea
+                id="sale-change-reason"
+                value={changeReason}
+                onChange={(event) => setChangeReason(event.target.value)}
+                maxLength={500}
+                rows={2}
+                className="mt-2"
+                placeholder="Explain why this sale is being changed..."
+              />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div className="fixed bottom-16 sm:bottom-0 left-0 right-0 p-4 bg-background border-t flex justify-end gap-2 md:gap-4 z-40 md:static md:bg-transparent md:border-t-0 md:p-0">
-        <Button 
-          variant="outline" 
-          onClick={() => handleSave(true)}
-          disabled={isSubmitting}
-        >
-          Save & New
-        </Button>
+        {!invoice && (
+          <Button
+            variant="outline"
+            onClick={() => handleSave(true)}
+            disabled={isSubmitting}
+          >
+            Save & New
+          </Button>
+        )}
         <Button 
           onClick={() => handleSave(false)}
-          disabled={isSubmitting}
+          disabled={isSubmitting || (Boolean(invoice) && !changeReason.trim())}
         >
           <Save className="w-4 h-4 mr-2" />
           Save

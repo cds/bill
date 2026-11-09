@@ -53,7 +53,7 @@ function makeChain(resolved: { data: unknown; error: unknown }) {
   const methods = [
     'select', 'insert', 'update', 'delete', 'eq', 'neq',
     'order', 'limit', 'ilike', 'single', 'maybeSingle',
-    'filter', 'match', 'in', 'or'
+    'filter', 'match', 'in', 'or', 'is'
   ]
   for (const m of methods) {
     chain[m] = vi.fn().mockReturnThis()
@@ -288,7 +288,7 @@ describe('PATCH /api/items/[id]', () => {
 
     const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}`, {
       method: 'PATCH',
-      body: JSON.stringify({ name: 'Updated Adapter' }),
+      body: JSON.stringify({ name: 'Updated Adapter', reason: 'Correcting item name' }),
     })
     const res = await updateItem(req, { params: Promise.resolve({ id: ITEM_ID }) })
 
@@ -311,7 +311,7 @@ describe('PATCH /api/items/[id]', () => {
 
     const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}`, {
       method: 'PATCH',
-      body: JSON.stringify({ opening_stock: 15 }),
+      body: JSON.stringify({ opening_stock: 15, name: 'Adapter', unit: 'pcs', sale_price: 10, purchase_price: 5, low_stock_threshold: 2, reason: 'Correcting opening stock' }),
     })
     const res = await updateItem(req, { params: Promise.resolve({ id: ITEM_ID }) })
 
@@ -336,7 +336,7 @@ describe('PATCH /api/items/[id]', () => {
 
     const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}`, {
       method: 'PATCH',
-      body: JSON.stringify({ opening_stock: 15 }),
+      body: JSON.stringify({ opening_stock: 15, name: 'Adapter', unit: 'pcs', sale_price: 10, purchase_price: 5, low_stock_threshold: 2, reason: 'Correcting opening stock' }),
     })
     const res = await updateItem(req, { params: Promise.resolve({ id: ITEM_ID }) })
 
@@ -351,7 +351,7 @@ describe('PATCH /api/items/[id]', () => {
 
     const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}`, {
       method: 'PATCH',
-      body: JSON.stringify({ name: 'New Name' }),
+      body: JSON.stringify({ name: 'New Name', reason: 'Correcting item name' }),
     })
     const res = await updateItem(req, { params: Promise.resolve({ id: ITEM_ID }) })
     const body = await res.json()
@@ -371,7 +371,7 @@ describe('PATCH /api/items/[id]', () => {
 
     const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}`, {
       method: 'PATCH',
-      body: JSON.stringify({ name: 'Updated Item' }),
+      body: JSON.stringify({ name: 'Updated Item', reason: 'Correcting item name' }),
     })
     const res = await updateItem(req, { params: Promise.resolve({ id: ITEM_ID }) })
     const body = await res.json()
@@ -387,12 +387,13 @@ describe('DELETE /api/items/[id]', () => {
   })
 
   // IT-15 & IT-17
-  it('IT-15 & IT-17: Successfully deletes item (200 { success: true })', async () => {
-    mockFrom = vi.fn().mockReturnValue(makeChain({ data: null, error: null }))
+  it('IT-15 & IT-17: Successfully discards item (200 { success: true })', async () => {
+    mockFrom = vi.fn().mockReturnValue(makeChain({ data: { id: ITEM_ID }, error: null }))
 
     const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}`, {
       method: 'DELETE',
       headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'worker' },
+      body: JSON.stringify({ reason: 'Duplicate item' }),
     })
     const res = await deleteItem(req, { params: Promise.resolve({ id: ITEM_ID }) })
     const body = await res.json()
@@ -402,10 +403,13 @@ describe('DELETE /api/items/[id]', () => {
   })
 
   // IT-16
-  it('IT-16: Returns 500 when delete fails', async () => {
+  it('IT-16: Returns 500 when discard fails', async () => {
     mockFrom = vi.fn().mockReturnValue(makeChain({ data: null, error: { message: 'Delete constraint failure' } }))
 
-    const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}`, { method: 'DELETE' })
+    const req = new NextRequest(`http://localhost/api/items/${ITEM_ID}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason: 'Duplicate item' }),
+    })
     const res = await deleteItem(req, { params: Promise.resolve({ id: ITEM_ID }) })
     const body = await res.json()
 

@@ -39,6 +39,7 @@ export function PartyForm({
   const [phone, setPhone] = useState(party?.phone || '');
   const [address, setAddress] = useState(party?.address || '');
   const [type, setType] = useState(party?.type || 'customer');
+  const [reason, setReason] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +53,7 @@ export function PartyForm({
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, address, type }),
+        body: JSON.stringify({ name, phone, address, type, ...(party ? { reason } : {}) }),
       });
 
       if (!res.ok) {
@@ -61,6 +62,7 @@ export function PartyForm({
       }
 
       onSaved();
+      setReason('');
       onOpenChange(false);
       router.refresh();
     } catch (error) {
@@ -72,7 +74,10 @@ export function PartyForm({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open}     onOpenChange={(nextOpen) => {
+      if (!nextOpen) setReason('');
+      onOpenChange(nextOpen);
+    }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{party ? 'Edit Party' : 'Add Party'}</DialogTitle>
@@ -116,6 +121,18 @@ export function PartyForm({
               onChange={(e) => setAddress(e.target.value)}
             />
           </div>
+          {party && (
+            <div className="space-y-2">
+              <Label htmlFor="party-change-reason">Reason for change (required)</Label>
+              <Textarea
+                id="party-change-reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                maxLength={500}
+                required
+              />
+            </div>
+          )}
           <div className="flex justify-end space-x-2">
             <Button
               type="button"
@@ -125,7 +142,7 @@ export function PartyForm({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || (Boolean(party) && !reason.trim())}>
               {loading ? 'Saving...' : 'Save'}
             </Button>
           </div>

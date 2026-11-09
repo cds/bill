@@ -34,12 +34,16 @@ export default async function SalesReportPage({
   }
 
   const { data: invoices, error } = await query
+  if (error) {
+    throw new Error(`Failed to load sales report: ${error.message}`)
+  }
 
   const safeInvoices = invoices || []
 
-  const totalSales = safeInvoices.reduce((acc, inv) => acc + Number(inv.total_amount), 0)
-  const totalPaid = safeInvoices.reduce((acc, inv) => acc + Number(inv.amount_paid), 0)
-  const totalBalance = safeInvoices.reduce((acc, inv) => acc + Number(inv.balance_due), 0)
+  const activeInvoices = safeInvoices.filter((invoice) => !invoice.deleted_at)
+  const totalSales = activeInvoices.reduce((acc, inv) => acc + Number(inv.total_amount), 0)
+  const totalPaid = activeInvoices.reduce((acc, inv) => acc + Number(inv.amount_paid), 0)
+  const totalBalance = activeInvoices.reduce((acc, inv) => acc + Number(inv.balance_due), 0)
 
   return (
     <div className="space-y-6">
@@ -82,6 +86,7 @@ export default async function SalesReportPage({
               <TableHead>Date</TableHead>
               <TableHead>Invoice #</TableHead>
               <TableHead>Party</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead className="text-right">Paid</TableHead>
               <TableHead className="text-right">Balance</TableHead>
@@ -90,19 +95,20 @@ export default async function SalesReportPage({
           <TableBody>
             {safeInvoices.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
                   No sales found in this date range.
                 </TableCell>
               </TableRow>
             ) : (
               safeInvoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
-                  <TableCell>INV-{invoice.invoice_number}</TableCell>
-                  <TableCell>{invoice.party_name}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(invoice.total_amount)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(invoice.amount_paid)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(invoice.balance_due)}</TableCell>
+                <TableRow key={invoice.id} className={invoice.deleted_at ? 'text-muted-foreground' : ''}>
+                  <TableCell className={invoice.deleted_at ? 'line-through' : ''}>{formatDate(invoice.invoice_date)}</TableCell>
+                  <TableCell className={invoice.deleted_at ? 'line-through' : ''}>INV-{invoice.invoice_number}</TableCell>
+                  <TableCell className={invoice.deleted_at ? 'line-through' : ''}>{invoice.party_name}</TableCell>
+                  <TableCell>{invoice.deleted_at ? <span className="font-medium text-destructive">Voided</span> : 'Active'}</TableCell>
+                  <TableCell className={`text-right ${invoice.deleted_at ? 'line-through' : ''}`}>{formatCurrency(invoice.total_amount)}</TableCell>
+                  <TableCell className={`text-right ${invoice.deleted_at ? 'line-through' : ''}`}>{formatCurrency(invoice.amount_paid)}</TableCell>
+                  <TableCell className={`text-right ${invoice.deleted_at ? 'line-through' : ''}`}>{formatCurrency(invoice.balance_due)}</TableCell>
                 </TableRow>
               ))
             )}

@@ -12,8 +12,14 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
 import { Users } from 'lucide-react';
 import Link from 'next/link';
+import type { Party } from '@/lib/supabase/types';
 
-export function PartiesPageClient({ parties }: { parties: any[] }) {
+type PartyHistoryRecord = Party & {
+  deleted_at?: string | null;
+  deleted_reason?: string | null;
+};
+
+export function PartiesPageClient({ parties }: { parties: PartyHistoryRecord[] }) {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('customers');
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -89,7 +95,14 @@ export function PartiesPageClient({ parties }: { parties: any[] }) {
                 <Link href={`/parties/${party.id}`} key={party.id}>
                   <Card className="hover:bg-accent/50 transition-colors">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">{party.name}</CardTitle>
+                      <CardTitle className={`text-lg ${party.deleted_at ? 'line-through text-muted-foreground' : ''}`}>
+                        {party.name}
+                      </CardTitle>
+                      {party.deleted_at && (
+                        <p className="text-xs font-medium text-destructive">
+                          Discarded{party.deleted_reason ? `: ${party.deleted_reason}` : ''}
+                        </p>
+                      )}
                     </CardHeader>
                     <CardContent>
                       <div className="text-sm text-gray-500 mb-2">{party.phone || 'No phone'}</div>
@@ -118,7 +131,14 @@ export function PartiesPageClient({ parties }: { parties: any[] }) {
                 <Link href={`/parties/${party.id}`} key={party.id}>
                   <Card className="hover:bg-accent/50 transition-colors">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">{party.name}</CardTitle>
+                      <CardTitle className={`text-lg ${party.deleted_at ? 'line-through text-muted-foreground' : ''}`}>
+                        {party.name}
+                      </CardTitle>
+                      {party.deleted_at && (
+                        <p className="text-xs font-medium text-destructive">
+                          Discarded{party.deleted_reason ? `: ${party.deleted_reason}` : ''}
+                        </p>
+                      )}
                     </CardHeader>
                     <CardContent>
                       <div className="text-sm text-gray-500 mb-2">{party.phone || 'No phone'}</div>

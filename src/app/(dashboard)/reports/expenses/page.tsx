@@ -34,10 +34,15 @@ export default async function ExpensesReportPage({
   }
 
   const { data: expenses, error } = await query
+  if (error) {
+    throw new Error(`Failed to load expense report: ${error.message}`)
+  }
 
   const safeExpenses = expenses || []
 
-  const totalExpenses = safeExpenses.reduce((acc, exp) => acc + Number(exp.amount), 0)
+  const totalExpenses = safeExpenses
+    .filter((expense) => !expense.deleted_at)
+    .reduce((acc, exp) => acc + Number(exp.amount), 0)
 
   return (
     <div className="space-y-6">
@@ -71,24 +76,30 @@ export default async function ExpensesReportPage({
               <TableHead>Category</TableHead>
               <TableHead>Payment Mode</TableHead>
               <TableHead>Notes</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Amount</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {safeExpenses.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
                   No expenses found in this date range.
                 </TableCell>
               </TableRow>
             ) : (
               safeExpenses.map((expense) => (
-                <TableRow key={expense.id}>
-                  <TableCell>{formatDate(expense.date)}</TableCell>
-                  <TableCell>{expense.category}</TableCell>
-                  <TableCell className="capitalize">{expense.payment_mode}</TableCell>
-                  <TableCell>{expense.notes || '-'}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(expense.amount)}</TableCell>
+                <TableRow key={expense.id} className={expense.deleted_at ? 'text-muted-foreground' : ''}>
+                  <TableCell className={expense.deleted_at ? 'line-through' : ''}>{formatDate(expense.date)}</TableCell>
+                  <TableCell className={expense.deleted_at ? 'line-through' : ''}>{expense.category}</TableCell>
+                  <TableCell className={`capitalize ${expense.deleted_at ? 'line-through' : ''}`}>{expense.payment_mode}</TableCell>
+                  <TableCell className={expense.deleted_at ? 'line-through' : ''}>{expense.notes || '-'}</TableCell>
+                  <TableCell>
+                    {expense.deleted_at ? (
+                      <span className="text-destructive" title={expense.deleted_reason ?? undefined}>Discarded</span>
+                    ) : 'Active'}
+                  </TableCell>
+                  <TableCell className={`text-right ${expense.deleted_at ? 'line-through' : ''}`}>{formatCurrency(expense.amount)}</TableCell>
                 </TableRow>
               ))
             )}

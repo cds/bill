@@ -1,31 +1,8 @@
-/**
- * Tests: GET /api/invoices/[id]  and  DELETE /api/invoices/[id]
- *
- * Covers test IDs: I-17 → I-29
- *
- * Scenarios:
- *  - I-17: Get existing invoice belonging to tenant -> 200 with merged items
- *  - I-18: Cross-tenant / RLS block -> 404
- *  - I-19: Non-existent invoice UUID -> 404
- *  - I-20: Items fetch error -> 400
- *  - I-21: Delete credit invoice with tracked items -> reverts stock, deletes sale adjustments, reverts party balance
- *  - I-22: Delete cash invoice without tracked items -> clean delete
- *  - I-23: Delete invoice when fetch fails (cross-tenant / non-existent) -> 500 error
- *  - I-24: Delete invoice when delete query fails -> 500 error
- *  - I-25: Worker caller invokes DELETE -> verifies handler executes
- *  - I-26: Invoice-items query error during deletion -> 500 error
- *  - I-27: Null invoice-items result -> delete succeeds without stock reversal
- *  - I-28: Missing item/party rows -> stock and balance updates are skipped
- *  - I-29: Missing error message -> fallback delete error is returned
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest as BaseNextRequest } from 'next/server'
-import { GET, DELETE } from '@/app/api/invoices/[id]/route'
+import { DELETE, GET, PATCH } from '@/app/api/invoices/[id]/route'
 
 const TENANT_ID = 'tenant-uuid-111'
-const PARTY_ID = 'party-uuid-222'
-const ITEM_ID = 'item-uuid-333'
 const INVOICE_ID = 'invoice-uuid-444'
 
 class NextRequest extends BaseNextRequest {
@@ -37,368 +14,144 @@ class NextRequest extends BaseNextRequest {
 }
 
 vi.mock('next/headers', () => ({
-  cookies: vi.fn().mockResolvedValue({
-    getAll: () => [],
-    set: vi.fn(),
-  }),
+  cookies: vi.fn().mockResolvedValue({ getAll: () => [], set: vi.fn() }),
 }))
 
 let mockFrom: ReturnType<typeof vi.fn>
+let mockRpc: ReturnType<typeof vi.fn>
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(() => ({
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   })),
 }))
 
 function makeChain(resolved: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {}
-  const methods = ['select', 'insert', 'update', 'delete', 'eq', 'neq',
-                   'order', 'limit', 'ilike', 'single', 'maybeSingle', 'filter', 'match', 'in', 'or']
-  for (const m of methods) {
-    chain[m] = vi.fn().mockReturnThis()
-  }
+  const methods = [
+    'select', 'insert', 'update', 'delete', 'eq', 'neq', 'is',
+    'order', 'limit', 'ilike', 'single', 'maybeSingle', 'filter',
+    'match', 'in', 'or',
+  ]
+  for (const method of methods) chain[method] = vi.fn().mockReturnThis()
   ;(chain.single as ReturnType<typeof vi.fn>).mockResolvedValue(resolved)
   ;(chain.maybeSingle as ReturnType<typeof vi.fn>).mockResolvedValue(resolved)
-  chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve(resolved).then(resolve)
+  chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve(resolved).then(resolve)
   return chain
 }
 
-describe('GET /api/invoices/[id]', () => {
+describe('/api/invoices/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockRpc = vi.fn().mockResolvedValue({ data: { success: true }, error: null })
   })
 
-  // I-17
-  it('I-17: Returns 200 with merged invoice and items data for existing invoice', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID,
-      tenant_id: TENANT_ID,
-      invoice_number: 'INV-101',
-      total_amount: 150,
-    }
-    const mockItems = [
-      { id: 'item-row-1', invoice_id: INVOICE_ID, item_name: 'Widget A', quantity: 2, rate: 75 }
-    ]
+  it('GET returns invoice with all line items, including archived history', async () => {
+    const invoice = { id: INVOICE_ID, invoice_number: 101, deleted_at: null }
+    const items = [{ id: 'line-1', item_name: 'Crackers', deleted_at: null }]
+    mockFrom = vi.fn((table: string) => makeChain({
+      data: table === 'invoices' ? invoice : items,
+      error: null,
+    }))
 
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
-      if (table === 'invoice_items') return makeChain({ data: mockItems, error: null })
-      return makeChain({ data: null, error: null })
-    })
+    const response = await GET(
+      new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`),
+      { params: Promise.resolve({ id: INVOICE_ID }) },
+    )
+    const body = await response.json()
 
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'tenant_admin' },
-    })
-
-    const res = await GET(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body.id).toBe(INVOICE_ID)
-    expect(body.items).toHaveLength(1)
-    expect(body.items[0].item_name).toBe('Widget A')
+    expect(response.status).toBe(200)
+    expect(body.items).toEqual(items)
+    expect(mockFrom).toHaveBeenNthCalledWith(2, 'invoice_items')
   })
 
-  // I-18 / I-19
-  it('I-18 & I-19: Returns 404 when invoice is not found or blocked by RLS', async () => {
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        return makeChain({ data: null, error: { message: 'Row not found' } })
-      }
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`)
-    const res = await GET(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(404)
-    expect(body.error).toBe('Row not found')
+  it('GET returns 404 when invoice is not available in tenant scope', async () => {
+    mockFrom = vi.fn(() => makeChain({ data: null, error: { message: 'Not found' } }))
+    const response = await GET(
+      new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`),
+      { params: Promise.resolve({ id: INVOICE_ID }) },
+    )
+    expect(response.status).toBe(404)
   })
 
-  // I-20
-  it('I-20: Returns 400 when fetching invoice items fails', async () => {
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        return makeChain({ data: { id: INVOICE_ID, invoice_number: 'INV-101' }, error: null })
-      }
-      if (table === 'invoice_items') {
-        return makeChain({ data: null, error: { message: 'Failed to fetch items' } })
-      }
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`)
-    const res = await GET(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(400)
-    expect(body.error).toBe('Failed to fetch items')
-  })
-})
-
-describe('DELETE /api/invoices/[id]', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
+  it('DELETE requires a reason before voiding', async () => {
+    const response = await DELETE(
+      new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, { method: 'DELETE' }),
+      { params: Promise.resolve({ id: INVOICE_ID }) },
+    )
+    expect(response.status).toBe(400)
+    expect(mockRpc).not.toHaveBeenCalled()
   })
 
-  // I-21
-  it('I-21: Reverts stock, deletes stock adjustments, reverts party balance, and deletes invoice', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID,
-      tenant_id: TENANT_ID,
-      party_id: PARTY_ID,
-      payment_type: 'credit',
-      balance_due: 100,
-    }
-    const mockItems = [
-      { id: 'row-1', item_id: ITEM_ID, quantity: 5 }
-    ]
-
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        // Can be queried via select or delete
-        return makeChain({ data: mockInvoice, error: null })
-      }
-      if (table === 'invoice_items') {
-        return makeChain({ data: mockItems, error: null })
-      }
-      if (table === 'items') {
-        return makeChain({ data: { current_stock: 20 }, error: null })
-      }
-      if (table === 'parties') {
-        return makeChain({ data: { balance: 250 }, error: null })
-      }
-      if (table === 'stock_adjustments') {
-        return makeChain({ data: null, error: null })
-      }
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      method: 'DELETE',
-      headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'tenant_admin' },
-    })
-
-    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body).toEqual({ success: true })
-
-    const tablesCalled = mockFrom.mock.calls.map(([t]) => t)
-    expect(tablesCalled).toContain('invoices')
-    expect(tablesCalled).toContain('invoice_items')
-    expect(tablesCalled).toContain('items')
-    expect(tablesCalled).toContain('stock_adjustments')
-    expect(tablesCalled).toContain('parties')
-  })
-
-  // I-22
-  it('I-22: Deletes cash invoice without tracked items cleanly (no stock or party update)', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID,
-      tenant_id: TENANT_ID,
-      party_id: PARTY_ID,
-      payment_type: 'cash',
-      balance_due: 0,
-    }
-    const mockItems = [
-      { id: 'row-1', item_id: null, quantity: 1 } // Untracked item
-    ]
-
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
-      if (table === 'invoice_items') return makeChain({ data: mockItems, error: null })
-      if (table === 'stock_adjustments') return makeChain({ data: null, error: null })
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      method: 'DELETE',
-      headers: { 'x-tenant-id': TENANT_ID },
-    })
-
-    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body).toEqual({ success: true })
-
-    const tablesCalled = mockFrom.mock.calls.map(([t]) => t)
-    expect(tablesCalled).not.toContain('items')
-    expect(tablesCalled).not.toContain('parties')
-  })
-
-  // I-23
-  it('I-23: Returns 500 when invoice lookup fails', async () => {
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        return makeChain({ data: null, error: { message: 'Database query error' } })
-      }
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      method: 'DELETE',
-    })
-
-    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(500)
-    expect(body.error).toBe('Database query error')
-  })
-
-  // I-24
-  it('I-24: Returns 500 when invoice deletion fails', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID,
-      payment_type: 'cash',
-      balance_due: 0,
-    }
-    let invoiceQueryCount = 0
-
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        invoiceQueryCount += 1
-        return invoiceQueryCount === 1
-          ? makeChain({ data: mockInvoice, error: null })
-          : makeChain({ data: null, error: { message: 'Invoice delete failed' } })
-      }
-      if (table === 'invoice_items') return makeChain({ data: [], error: null })
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      method: 'DELETE',
-    })
-    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(500)
-    expect(body.error).toBe('Invoice delete failed')
-  })
-
-  it('I-26: Returns 500 when fetching invoice items for deletion fails', async () => {
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        return makeChain({
-          data: { id: INVOICE_ID, payment_type: 'cash', balance_due: 0 },
-          error: null,
-        })
-      }
-      if (table === 'invoice_items') {
-        return makeChain({ data: null, error: { message: 'Invoice items fetch failed' } })
-      }
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      method: 'DELETE',
-    })
-    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(500)
-    expect(body.error).toBe('Invoice items fetch failed')
-  })
-
-  it('I-27: Deletes the invoice when the invoice-items query returns no rows', async () => {
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') {
-        return makeChain({
-          data: { id: INVOICE_ID, payment_type: 'cash', balance_due: 0 },
-          error: null,
-        })
-      }
-      if (table === 'invoice_items') return makeChain({ data: null, error: null })
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      method: 'DELETE',
-    })
-    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-
-    expect(res.status).toBe(200)
-    expect(mockFrom).toHaveBeenCalledWith('invoices')
-  })
-
-  it('I-28: Skips stock and balance updates when related records no longer exist', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID,
-      party_id: PARTY_ID,
-      payment_type: 'credit',
-      balance_due: 100,
-    }
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
-      if (table === 'invoice_items') {
-        return makeChain({
-          data: [{ item_id: ITEM_ID, quantity: 2 }],
-          error: null,
-        })
-      }
-      if (table === 'items' || table === 'parties') {
-        return makeChain({ data: null, error: null })
-      }
-      return makeChain({ data: null, error: null })
-    })
-
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      method: 'DELETE',
-    })
-    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body).toEqual({ success: true })
-    expect(mockFrom.mock.calls.filter(([table]: [string]) => table === 'items')).toHaveLength(1)
-    expect(mockFrom.mock.calls.filter(([table]: [string]) => table === 'parties')).toHaveLength(1)
-  })
-
-  it('I-29: Uses the fallback error message when deletion throws without a message', async () => {
-    mockFrom = vi.fn().mockReturnValue(
-      makeChain({ data: null, error: { code: 'UNKNOWN' } })
+  it('DELETE calls the atomic void operation with invoice id and reason', async () => {
+    const response = await DELETE(
+      new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Duplicate sale' }),
+      }),
+      { params: Promise.resolve({ id: INVOICE_ID }) },
     )
 
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      method: 'DELETE',
+    expect(response.status).toBe(200)
+    expect(mockRpc).toHaveBeenCalledWith('void_invoice', {
+      p_invoice_id: INVOICE_ID,
+      p_reason: 'Duplicate sale',
     })
-    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(500)
-    expect(body.error).toBe('Failed to delete invoice')
   })
 
-  // I-25
-  it('I-25: Worker role invocation executes DELETE handler', async () => {
-    const mockInvoice = {
-      id: INVOICE_ID,
-      tenant_id: TENANT_ID,
+  it('DELETE maps database authorization errors to 403', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: '42501', message: 'Only tenant administrators can void sales.' },
+    })
+    const response = await DELETE(
+      new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Duplicate sale' }),
+      }),
+      { params: Promise.resolve({ id: INVOICE_ID }) },
+    )
+    expect(response.status).toBe(403)
+  })
+
+  it('PATCH validates a change reason and sends the edit to the atomic operation', async () => {
+    const body = {
+      invoice_date: '2026-11-09',
+      party_id: null,
+      party_name: 'Walk-in Customer',
       payment_type: 'cash',
-      balance_due: 0,
+      payment_method: 'cash',
+      amount_paid: 150,
+      notes: null,
+      reason: 'Corrected quantity',
+      items: [{
+        item_id: null,
+        item_name: 'Snack Box',
+        quantity: 3,
+        unit: 'Box',
+        rate: 50,
+        tax_percent: 0,
+        discount_percent: 0,
+      }],
     }
 
-    mockFrom = vi.fn().mockImplementation((table: string) => {
-      if (table === 'invoices') return makeChain({ data: mockInvoice, error: null })
-      if (table === 'invoice_items') return makeChain({ data: [], error: null })
-      if (table === 'stock_adjustments') return makeChain({ data: null, error: null })
-      return makeChain({ data: null, error: null })
-    })
+    const response = await PATCH(
+      new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ id: INVOICE_ID }) },
+    )
 
-    const req = new NextRequest(`http://localhost/api/invoices/${INVOICE_ID}`, {
-      method: 'DELETE',
-      headers: { 'x-tenant-id': TENANT_ID, 'x-tenant-role': 'worker' },
-    })
-
-    const res = await DELETE(req, { params: Promise.resolve({ id: INVOICE_ID }) })
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body.success).toBe(true)
+    expect(response.status).toBe(200)
+    expect(mockRpc).toHaveBeenCalledWith('edit_invoice', expect.objectContaining({
+      p_invoice_id: INVOICE_ID,
+      p_reason: 'Corrected quantity',
+      p_items: body.items,
+    }))
   })
 })

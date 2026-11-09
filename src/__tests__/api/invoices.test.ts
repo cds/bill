@@ -80,7 +80,7 @@ vi.mock('@/lib/supabase/server', () => ({
 function makeChain(resolved: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {}
   const methods = ['select', 'insert', 'update', 'delete', 'eq', 'neq',
-                   'order', 'limit', 'ilike', 'single', 'maybeSingle', 'filter', 'match', 'in', 'or']
+                   'order', 'limit', 'ilike', 'single', 'maybeSingle', 'filter', 'match', 'in', 'or', 'is']
   for (const m of methods) {
     chain[m] = vi.fn().mockReturnThis()
   }
