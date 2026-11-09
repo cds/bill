@@ -1,10 +1,26 @@
+import 'server-only';
+
 import { createServerClient } from '@supabase/ssr';
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { PageHeader } from '@/components/shared/page-header';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AuditLogTable } from '@/components/admin/audit-log-table';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+
+type AuditLog = {
+  id: string;
+  tenant_id: string | null;
+  user_id: string | null;
+  table_name: string;
+  record_id: string;
+  action: 'INSERT' | 'UPDATE' | 'SOFT_DELETE';
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  created_at: string;
+  created_at_label: string;
+  tenants: { name: string } | null;
+};
 
 export default async function AdminLogsPage() {
   const cookieStore = await cookies();
@@ -22,8 +38,18 @@ export default async function AdminLogsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  // As a super admin, this queries all logs from all tenants
-  const { data: logs, error } = await supabase
+  const { data: roleData, error: roleError } = await supabase
+    .from('users')
+    .select('system_role')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (roleError) {
+    throw new Error(`Failed to verify admin role: ${roleError.message}`);
+  }
+  if (roleData?.system_role !== 'super_admin') redirect('/');
+
+  const { data, error } = await supabase
     .from('audit_logs')
     .select(`
       *,
@@ -33,17 +59,97 @@ export default async function AdminLogsPage() {
     .limit(100);
 
   if (error) {
-    console.error('Error fetching logs:', error);
+    throw new Error(`Failed to fetch audit logs: ${error.message}`);
   }
 
-  const getActionColor = (action: string) => {
-    switch(action) {
-      case 'INSERT': return 'bg-emerald-100 text-emerald-800';
-      case 'UPDATE': return 'bg-blue-100 text-blue-800';
-      case 'SOFT_DELETE': return 'bg-rose-100 text-rose-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+  const logs = ((data ?? []) as Omit<AuditLog, 'created_at_label'>[]).map((log) => ({
+    ...log,
+    created_at_label: new Date(log.created_at).toLocaleString(),
+  }));
+  const userIds = new Set(
+    logs.flatMap((log) => log.user_id ? [log.user_id] : [])
+  );
+  const invoiceIds = logs.flatMap((log) =>
+    log.table_name === 'invoices' ? [log.record_id] : []
+  );
+
+  const [actors, invoiceItemsByInvoiceId] = await Promise.all([
+    (async () => {
+      const actors = new Map<string, { name: string; email: string | null }>();
+      if (userIds.size === 0) return {};
+
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!serviceRoleKey) {
+        throw new Error('SUPABASE_SERVICE_ROLE_KEY is required to load audit log actors.');
+      }
+
+      const adminSupabase = createSupabaseAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        serviceRoleKey,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+
+      for (let page = 1; ; page += 1) {
+        const { data: authUsers, error: authUsersError } = await adminSupabase.auth.admin.listUsers({
+          page,
+          perPage: 1000,
+        });
+
+        if (authUsersError) {
+          throw new Error(`Failed to load audit log actors: ${authUsersError.message}`);
+        }
+
+        for (const actor of authUsers.users) {
+          if (!userIds.has(actor.id)) continue;
+
+          const metadata = actor.user_metadata;
+          const name = [
+            metadata?.full_name,
+            metadata?.name,
+            actor.email,
+          ].find((value): value is string => typeof value === 'string' && value.length > 0);
+
+          if (name) {
+            actors.set(actor.id, { name, email: actor.email ?? null });
+          }
+        }
+
+        if (actors.size === userIds.size || authUsers.users.length < 1000) break;
+      }
+
+      return Object.fromEntries(actors);
+    })(),
+    (async () => {
+      const invoiceItemsByInvoiceId: Record<
+        string,
+        Array<{ item_name: string; quantity: number; unit: string; rate: number; amount: number }>
+      > = {};
+      if (invoiceIds.length === 0) return invoiceItemsByInvoiceId;
+
+      const { data: invoiceItems, error: invoiceItemsError } = await supabase
+        .from('invoice_items')
+        .select('invoice_id, item_name, quantity, unit, rate, amount')
+        .in('invoice_id', [...new Set(invoiceIds)]);
+
+      if (invoiceItemsError) {
+        throw new Error(`Failed to load sale line items for audit logs: ${invoiceItemsError.message}`);
+      }
+
+      for (const item of invoiceItems ?? []) {
+        const invoiceId = item.invoice_id;
+        invoiceItemsByInvoiceId[invoiceId] ??= [];
+        invoiceItemsByInvoiceId[invoiceId].push({
+          item_name: item.item_name,
+          quantity: Number(item.quantity),
+          unit: item.unit,
+          rate: Number(item.rate),
+          amount: Number(item.amount),
+        });
+      }
+
+      return invoiceItemsByInvoiceId;
+    })(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -53,51 +159,14 @@ export default async function AdminLogsPage() {
       />
 
       <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Timestamp</TableHead>
-                <TableHead>Tenant</TableHead>
-                <TableHead>User ID</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Table</TableHead>
-                <TableHead>Record ID</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs?.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-sm">
-                    {new Date(log.created_at).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {log.tenants?.name || 'Unknown Tenant'}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {log.user_id}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={getActionColor(log.action)}>
-                      {log.action}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{log.table_name}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{log.record_id}</TableCell>
-                </TableRow>
-              ))}
-              {!logs?.length && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
-                    No audit logs recorded yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+        <CardContent className="p-0">
+          <AuditLogTable
+            logs={logs}
+            actors={actors}
+            invoiceItemsByInvoiceId={invoiceItemsByInvoiceId}
+          />
         </CardContent>
       </Card>
     </div>
   );
 }
-
