@@ -181,20 +181,39 @@ export function InvoiceForm({
   const actualAmountPaid = state.payment_type === 'cash' ? grandTotal : state.amount_paid;
   const balanceDue = Math.max(0, grandTotal - actualAmountPaid);
 
-  const handleSelectItem = (item: Pick<Item, 'id' | 'name' | 'unit' | 'sale_price'>) => {
-    dispatch({
-      type: 'ADD_ITEM',
-      payload: {
-        tempId: tempId(),
-        item_id: item.id,
-        item_name: item.name,
-        quantity: 1,
-        unit: item.unit,
-        rate: item.sale_price || 0,
-        tax_percent: 0,
-        discount_percent: 0,
-      },
-    });
+  const handleItemQuantityChange = (
+    item: Pick<Item, 'id' | 'name' | 'unit' | 'sale_price'>,
+    quantity: number,
+  ) => {
+    const existingItem = state.lineItems.find((lineItem) => lineItem.item_id === item.id);
+
+    if (existingItem) {
+      if (quantity === 0) {
+        dispatch({ type: 'REMOVE_ITEM', payload: existingItem.tempId });
+      } else {
+        dispatch({
+          type: 'UPDATE_ITEM',
+          payload: { tempId: existingItem.tempId, updates: { quantity } },
+        });
+      }
+      return;
+    }
+
+    if (quantity > 0) {
+      dispatch({
+        type: 'ADD_ITEM',
+        payload: {
+          tempId: tempId(),
+          item_id: item.id,
+          item_name: item.name,
+          quantity,
+          unit: item.unit,
+          rate: item.sale_price || 0,
+          tax_percent: 0,
+          discount_percent: 0,
+        },
+      });
+    }
   };
 
   const handleSave = async (saveAndNew = false) => {
@@ -464,7 +483,12 @@ export function InvoiceForm({
       <ItemSelector 
         open={isItemSelectorOpen} 
         onOpenChange={setIsItemSelectorOpen}
-        onSelect={handleSelectItem}
+        selectedItems={state.lineItems.map(({ item_id, quantity, rate }) => ({
+          itemId: item_id,
+          quantity,
+          rate,
+        }))}
+        onQuantityChange={handleItemQuantityChange}
       />
     </div>
   );

@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { formatCurrency } from '@/lib/utils';
-import { Trash2 } from 'lucide-react';
+import { Minus, Plus, Trash2 } from 'lucide-react';
 
 type LineItem = {
   tempId: string;
@@ -35,14 +35,40 @@ export function LineItemRow({ item, onUpdate, onRemove }: LineItemRowProps) {
         <div>
           <Label className="text-xs text-muted-foreground mb-1 block">Qty</Label>
           <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={`Decrease ${item.item_name} quantity`}
+              className="h-9 w-9 shrink-0"
+              onClick={() => {
+                if (item.quantity <= 1) {
+                  onRemove(item.tempId);
+                } else {
+                  onUpdate(item.tempId, { quantity: item.quantity - 1 });
+                }
+              }}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
             <Input 
               type="number" 
               min="0"
               step="0.01"
               value={item.quantity === 0 ? '' : item.quantity}
-              onChange={(e) => onUpdate(item.tempId, { quantity: parseFloat(e.target.value) || 0 })}
-              className="h-8"
+              onChange={(e) => onUpdate(item.tempId, { quantity: Math.max(0, parseFloat(e.target.value) || 0) })}
+              className="h-9 min-w-0 text-center"
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={`Increase ${item.item_name} quantity`}
+              className="h-9 w-9 shrink-0"
+              onClick={() => onUpdate(item.tempId, { quantity: item.quantity + 1 })}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
             <span className="text-xs text-muted-foreground w-8 truncate" title={item.unit}>{item.unit}</span>
           </div>
         </div>
