@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { AppHeader } from '@/components/layout/app-header';
 import { BottomNav } from '@/components/layout/bottom-nav';
+import { OfflineTenantPersistence } from '@/components/pwa/offline-tenant-persistence';
 
 export default async function DashboardLayout({
   children,
@@ -35,6 +36,10 @@ export default async function DashboardLayout({
         systemRole={systemRole}
         tenants={tenants}
         selectedTenantId={selectedTenantId ?? undefined}
+      />
+      <OfflineTenantPersistence
+        tenantId={selectedTenantId ?? undefined}
+        enabled={systemRole !== 'super_admin'}
       />
       <main className="flex-1 pb-20 sm:pb-6">{children}</main>
       <BottomNav systemRole={systemRole} />

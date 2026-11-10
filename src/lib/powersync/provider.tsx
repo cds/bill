@@ -12,11 +12,30 @@ type PowerSyncProviderProps = {
   fallback?: ReactNode;
 };
 
-export function PowerSyncProvider({
+type PowerSyncConnectionProviderProps = PowerSyncProviderProps & {
+  initializeDatabase: (tenantId: string) => Promise<PowerSyncDatabase>;
+};
+
+async function loadPowerSyncDatabase(tenantId: string) {
+  const { getPowerSyncDatabase } = await import('./client');
+  return getPowerSyncDatabase(tenantId);
+}
+
+export function PowerSyncProvider(props: PowerSyncProviderProps) {
+  return (
+    <PowerSyncConnectionProvider
+      {...props}
+      initializeDatabase={loadPowerSyncDatabase}
+    />
+  );
+}
+
+export function PowerSyncConnectionProvider({
   tenantId,
   children,
   fallback,
-}: PowerSyncProviderProps) {
+  initializeDatabase,
+}: PowerSyncConnectionProviderProps) {
   const [connection, setConnection] = useState<{
     tenantId: string;
     database: PowerSyncDatabase;
@@ -33,8 +52,7 @@ export function PowerSyncProvider({
     const initialize = async () => {
       const generation = authGeneration;
       try {
-        const { getPowerSyncDatabase } = await import('./client');
-        const instance = await getPowerSyncDatabase(tenantId);
+        const instance = await initializeDatabase(tenantId);
         if (!cancelled && generation === authGeneration) {
           setConnection({ tenantId, database: instance });
           setInitializationError(null);
@@ -75,7 +93,7 @@ export function PowerSyncProvider({
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [tenantId]);
+  }, [initializeDatabase, tenantId]);
 
   if (initializationError?.tenantId === tenantId) {
     return <div role="alert">PowerSync initialization failed: {initializationError.message}</div>;

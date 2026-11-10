@@ -14,7 +14,7 @@
  *  - M-08: Standard user with no tenant membership is redirected to /setup
  *  - M-09: Super admin with no tenant membership visiting / is redirected to /admin
  *  - M-10: User visiting /setup is allowed through (prevents redirect loop)
- *  - M-11: Config matcher regex excludes /api/health and static assets
+ *  - M-11: Config matcher regex excludes /api/health, offline entry, and static assets
  *  - M-12: Worker role accessing dashboard pages gets headers injected
  *  - M-13: Tenant admin (business user) accessing dashboard pages gets headers injected
  *  - M-14: Worker visiting /admin is redirected to /
@@ -265,6 +265,7 @@ describe('Next.js Middleware Routing & RBAC', () => {
     expect(regex.test('/offline-shell.css')).toBe(false)
     expect(regex.test('/offline-shell.js')).toBe(false)
     expect(regex.test('/manifest.webmanifest')).toBe(false)
+    expect(regex.test('/offline-app')).toBe(false)
   })
 
   // ---------- NEW TESTS (M-12 → M-20) ----------

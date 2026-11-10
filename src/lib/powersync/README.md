@@ -67,7 +67,7 @@ With the test Supabase user signed in:
 3. Reconnect and verify sync resumes. Repeat on each target browser/device (including Safari/iOS if supported).
 4. Verify a different tenant ID returns no items for this user, then test a user without membership. Do not use real business data unless cross-tenant isolation passes.
 
-The local database view remains usable while the already-open workspace is disconnected. The service worker's cold-launch or offline-refresh fallback remains a static generic page; authenticated routes require a server response to render, and private route HTML is deliberately not cached. When connection returns, the shell's retry link reloads the originally requested route. Expense and new-invoice creation are the only supported local writes; other PowerSync CRUD tables remain unsupported.
+The `/offline-app` public entry is a generic client shell with no tenant or account data embedded in its cached HTML. On an offline navigation or refresh, the service worker redirects to this cached shell and records only the requested path. During installation, the worker caches the shell's static JavaScript/CSS dependencies and their referenced static workers, WASM, and font assets. The app reads the current Supabase session from local browser storage, then opens the PowerSync database for the tenant selected on that device. The tenant selection is stored under a user-specific local-storage key; it is a local database selector, not authorization. Private route HTML and API responses are never cached. The first offline-refresh release displays the read-only cached items and parties workspace; unsupported routes are identified as online-only. Expense and new-invoice creation remain available only in the existing flows while those pages are open.
 
 Run the credential connector tests with `npx vitest run src/__tests__/powersync-connector.test.ts`.
 
@@ -91,14 +91,14 @@ npx vitest run \
 
 ## PWA offline shell verification
 
-The root layout registers a service worker that network-loads navigations and falls back to the standalone `/offline.html` shell only when the request fails. It precaches that shell and its static resources, then caches immutable `/_next/static/` assets as they are requested. API, auth, RSC, Supabase, and tenant data responses are not cached. The shell is an entry path only; the authenticated PowerSync workspace is not yet mounted into it.
+The root layout registers a service worker that network-loads navigations and redirects failed page loads to the cached `/offline-app` entry. It precaches that data-free document plus its referenced JavaScript, CSS, worker, WASM, and font assets. Other `/_next/static/` assets are cached when requested. API, auth, RSC, Supabase, and private page responses are never cached. The generic `/offline.html` shell is retained only as a last-resort fallback if the app entry could not be cached.
 
 Verify on the actual supported phones and tablets, using HTTPS (or localhost):
 
-1. Open the app online, wait for service-worker registration/activation, and load at least one route so static assets can be cached.
+1. Open the app online and visit a dashboard page after service-worker registration. The worker pre-caches the data-free `/offline-app` document and its static JavaScript/CSS dependencies; the dashboard records the selected tenant under the current user ID.
 2. Install/add the app to the home screen where supported; launch it online once.
-3. Force-close the browser/PWA, enable airplane mode, and cold-launch from the home-screen icon. Confirm the offline shell appears.
-4. Open `/offline-workspace` while online and wait until locally synced items and parties appear. Disconnect the network with the screen still open and confirm both lists remain visible and interactive. A cold offline launch still shows the static shell rather than this route.
-5. While still offline, reload the shell and try navigating to `/`, `/items`, and an API URL. Confirm navigations show only the generic shell and no private data; API requests must fail rather than receive cached data.
-6. Re-enable networking and follow “Retry connection”. Confirm normal authenticated routing works, then inspect browser storage/service-worker caches to verify they contain only the shell assets and `/_next/static/` files—no API, RSC, or Supabase responses.
-7. Repeat after updating the app and after clearing site data; check Safari/iOS, Chrome/Android, and desktop browsers used by the pilot. Verify cold launch behavior per browser because service-worker installation, eviction, and storage policies differ.
+3. Force-close the browser/PWA, enable airplane mode, and cold-launch from the home-screen icon. Confirm the local offline app opens rather than the generic last-resort shell.
+4. Open `/offline-workspace` while online and wait until locally synced items and parties appear. Disconnect the network and refresh; verify the offline app opens and displays the same local rows.
+5. While still offline, refresh `/`, `/items`, and `/sales/new`. Each should open the offline app, explain that the requested route is not yet supported, and show the cached read-only workspace. API requests must fail rather than receive cached data.
+6. Re-enable networking and follow “Retry requested page”. Confirm normal authenticated routing works, then inspect browser storage/service-worker caches to verify they contain only the static offline app/shell assets and `/_next/static/` files—no API, RSC, or Supabase responses.
+7. Repeat after updating the app and after clearing site data; check Safari/iOS, Chrome/Android, and desktop browsers used by the pilot. Verify cold launch behavior per browser because service-worker installation, eviction, and storage policies differ. Connect and open any dashboard route once after an app update so the updated service worker can install and precache the matching offline shell.
