@@ -67,6 +67,9 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
     const batch = await database.getCrudBatch();
     if (!batch) return;
 
+    const processedItemIds = new Set<string>();
+    const processedPartyIds = new Set<string>();
+
     for (const change of batch.crud) {
       if (change.table === 'expenses') {
         await this.uploadExpense(database, change);
@@ -76,12 +79,20 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
         await this.uploadInvoice(database, change);
         continue;
       }
-      if (change.table === 'offline_parties') {
+      if (change.table === 'offline_parties' || change.table === 'parties') {
+        if (processedPartyIds.has(change.id)) {
+          continue;
+        }
         await this.uploadParty(database, change);
+        processedPartyIds.add(change.id);
         continue;
       }
-      if (change.table === 'offline_items') {
+      if (change.table === 'offline_items' || change.table === 'items') {
+        if (processedItemIds.has(change.id)) {
+          continue;
+        }
         await this.uploadItem(database, change);
+        processedItemIds.add(change.id);
         continue;
       }
       throw new Error(`Unsupported PowerSync upload table: ${change.table}`);
@@ -250,7 +261,11 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
     change: NonNullable<Awaited<ReturnType<typeof database.getCrudBatch>>>['crud'][number],
   ) {
     const tenantId = change.opData?.tenant_id;
-    if (change.op !== UpdateType.PUT || typeof tenantId !== 'string' || !tenantId) {
+    if (
+      (change.op !== UpdateType.PUT && change.op !== UpdateType.PATCH) ||
+      typeof tenantId !== 'string' ||
+      !tenantId
+    ) {
       await setPartySyncStatus(
         database,
         change.id,
@@ -274,7 +289,10 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
         method: 'POST',
         credentials: 'same-origin',
         redirect: 'manual',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': tenantId,
+        },
         body: JSON.stringify({
           id: change.id,
           tenant_id: tenantId,
@@ -324,7 +342,11 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
     change: NonNullable<Awaited<ReturnType<typeof database.getCrudBatch>>>['crud'][number],
   ) {
     const tenantId = change.opData?.tenant_id;
-    if (change.op !== UpdateType.PUT || typeof tenantId !== 'string' || !tenantId) {
+    if (
+      (change.op !== UpdateType.PUT && change.op !== UpdateType.PATCH) ||
+      typeof tenantId !== 'string' ||
+      !tenantId
+    ) {
       await setItemSyncStatus(
         database,
         change.id,
@@ -348,7 +370,10 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
         method: 'POST',
         credentials: 'same-origin',
         redirect: 'manual',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': tenantId,
+        },
         body: JSON.stringify({
           id: change.id,
           tenant_id: tenantId,

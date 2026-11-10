@@ -86,7 +86,7 @@ export function OfflineSyncStatus() {
       <Button
         type="button"
         variant="outline"
-        disabled={!isOnline || isSyncing || isRequestingSync}
+        disabled={!isOnline || (isSyncing && !syncError) || isRequestingSync}
         onClick={() => void syncNow()}
       >
         {isRequestingSync ? 'Starting sync…' : 'Sync now'}
