@@ -95,7 +95,7 @@ The root layout registers a service worker that network-loads navigations and re
 
 Verify on the actual supported phones and tablets, using HTTPS (or localhost):
 
-1. Open the app online and visit a dashboard page after service-worker registration. The worker pre-caches the data-free `/offline-app` document and its static JavaScript/CSS dependencies; the dashboard records the selected tenant under the current user ID.
+1. Open the app online and visit `/offline-workspace` or `/expenses` after service-worker registration. The worker pre-caches the data-free `/offline-app` document and its static JavaScript/CSS dependencies; PowerSync initialization records the selected tenant under the signed-in user ID.
 2. Install/add the app to the home screen where supported; launch it online once.
 3. Force-close the browser/PWA, enable airplane mode, and cold-launch from the home-screen icon. Confirm the local offline app opens rather than the generic last-resort shell.
 4. Open `/offline-workspace` while online and wait until locally synced items and parties appear. Disconnect the network and refresh; verify the offline app opens and displays the same local rows.

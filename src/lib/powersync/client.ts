@@ -6,6 +6,7 @@ import {
 } from '@powersync/web';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { SupabasePowerSyncConnector } from './connector';
+import { persistOfflineTenantSelection } from './offline-storage';
 import { powerSyncSchema } from './schema';
 
 const databases = new Map<string, Promise<PowerSyncDatabase>>();
@@ -27,6 +28,8 @@ export async function getPowerSyncDatabase(tenantId: string) {
   if (!session) {
     throw new Error('A signed-in Supabase session is required to initialize PowerSync.');
   }
+
+  persistOfflineTenantSelection(session.user.id, tenantId);
 
   const databaseKey = `${session.user.id}:${tenantId}`;
   let databasePromise = databases.get(databaseKey);

@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { getOfflineTenantStorageKey } from '@/lib/powersync/offline-storage';
+import { persistOfflineTenantSelection } from '@/lib/powersync/offline-storage';
 
 export function OfflineTenantPersistence({
   tenantId,
@@ -27,7 +27,7 @@ export function OfflineTenantPersistence({
 
         const userId = result.data.session?.user.id;
         if (active && userId) {
-          window.localStorage.setItem(getOfflineTenantStorageKey(userId), tenantId);
+          persistOfflineTenantSelection(userId, tenantId);
         }
       } catch (cause: unknown) {
         console.error('Failed to persist the offline tenant selection:', cause);
