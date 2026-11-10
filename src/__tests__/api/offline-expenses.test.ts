@@ -57,9 +57,11 @@ describe('POST /api/offline/expenses', () => {
 
   it('authenticates, checks current tenant membership, and inserts the client UUID', async () => {
     const savedExpense = { ...payload, payment_status: 'paid' };
+    const user = makeChain({ data: { system_role: 'user' }, error: null });
     const membership = makeChain({ data: { tenant_id: TENANT_ID }, error: null });
     const insert = makeChain({ data: savedExpense, error: null });
     mockFrom
+      .mockReturnValueOnce(user)
       .mockReturnValueOnce(membership)
       .mockReturnValueOnce(insert);
 
@@ -67,7 +69,8 @@ describe('POST /api/offline/expenses', () => {
 
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({ expense: savedExpense, duplicate: false });
-    expect(mockFrom).toHaveBeenNthCalledWith(1, 'tenant_members');
+    expect(mockFrom).toHaveBeenNthCalledWith(1, 'users');
+    expect(mockFrom).toHaveBeenNthCalledWith(2, 'tenant_members');
     expect(membership.eq).toHaveBeenCalledWith('tenant_id', TENANT_ID);
     expect(membership.eq).toHaveBeenCalledWith('user_id', USER_ID);
     expect(insert.insert).toHaveBeenCalledWith({
@@ -79,6 +82,7 @@ describe('POST /api/offline/expenses', () => {
 
   it('accepts a retry with the same UUID and identical expense without inserting a duplicate', async () => {
     const savedExpense = { ...payload, payment_status: 'paid' };
+    const user = makeChain({ data: { system_role: 'user' }, error: null });
     const membership = makeChain({ data: { tenant_id: TENANT_ID }, error: null });
     const duplicateInsert = makeChain({
       data: null,
@@ -86,6 +90,7 @@ describe('POST /api/offline/expenses', () => {
     });
     const existing = makeChain({ data: savedExpense, error: null });
     mockFrom
+      .mockReturnValueOnce(user)
       .mockReturnValueOnce(membership)
       .mockReturnValueOnce(duplicateInsert)
       .mockReturnValueOnce(existing);
@@ -99,6 +104,7 @@ describe('POST /api/offline/expenses', () => {
   });
 
   it('rejects a reused UUID when the existing expense has different details', async () => {
+    const user = makeChain({ data: { system_role: 'user' }, error: null });
     const membership = makeChain({ data: { tenant_id: TENANT_ID }, error: null });
     const duplicateInsert = makeChain({
       data: null,
@@ -109,6 +115,7 @@ describe('POST /api/offline/expenses', () => {
       error: null,
     });
     mockFrom
+      .mockReturnValueOnce(user)
       .mockReturnValueOnce(membership)
       .mockReturnValueOnce(duplicateInsert)
       .mockReturnValueOnce(conflictingExpense);
@@ -120,14 +127,38 @@ describe('POST /api/offline/expenses', () => {
   });
 
   it('rejects a user who is no longer a member instead of writing to the tenant', async () => {
+    const user = makeChain({ data: { system_role: 'user' }, error: null });
     const membership = makeChain({ data: null, error: null });
-    mockFrom.mockReturnValueOnce(membership);
+    mockFrom
+      .mockReturnValueOnce(user)
+      .mockReturnValueOnce(membership);
 
     const response = await POST(makeRequest());
 
     expect(response.status).toBe(403);
     expect((await response.json()).error).toContain('not a member');
-    expect(mockFrom).toHaveBeenCalledOnce();
+    expect(mockFrom).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows a verified super admin to sync into the active tenant without tenant membership', async () => {
+    const user = makeChain({ data: { system_role: 'super_admin' }, error: null });
+    const tenant = makeChain({ data: { id: TENANT_ID }, error: null });
+    const insert = makeChain({ data: { ...payload, payment_status: 'paid' }, error: null });
+    mockFrom
+      .mockReturnValueOnce(user)
+      .mockReturnValueOnce(tenant)
+      .mockReturnValueOnce(insert);
+
+    const response = await POST(makeRequest());
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      expense: { ...payload, payment_status: 'paid' },
+      duplicate: false,
+    });
+    expect(mockFrom).toHaveBeenNthCalledWith(1, 'users');
+    expect(mockFrom).toHaveBeenNthCalledWith(2, 'tenants');
+    expect(mockFrom).toHaveBeenNthCalledWith(3, 'expenses');
   });
 
   it('rejects invalid expense data before database writes', async () => {

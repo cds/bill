@@ -88,8 +88,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const expense = parseExpense(body, tenantId);
-  if (!expense) {
+  const submittedTenantId = body && typeof body === 'object'
+    ? (body as Record<string, unknown>).tenant_id
+    : null;
+  const submittedExpense = typeof submittedTenantId === 'string'
+    ? parseExpense(body, submittedTenantId)
+    : null;
+  if (!submittedExpense) {
     return NextResponse.json({ error: 'Invalid expense details or tenant context' }, { status: 400 });
   }
 
@@ -99,20 +104,65 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Authentication is required to sync expenses' }, { status: 401 });
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from('tenant_members')
-    .select('tenant_id')
-    .eq('tenant_id', tenantId)
-    .eq('user_id', authData.user.id)
+  let effectiveTenantId = tenantId;
+  const { data: roleData, error: roleError } = await supabase
+    .from('users')
+    .select('system_role')
+    .eq('id', authData.user.id)
     .maybeSingle();
 
-  if (membershipError) {
-    console.error('Failed to verify tenant membership for offline expense:', membershipError);
-    return NextResponse.json({ error: 'Unable to verify tenant membership' }, { status: 500 });
+  if (roleError) {
+    console.error('Failed to verify system role for offline expense:', roleError);
+    return NextResponse.json({ error: 'Unable to verify user role' }, { status: 500 });
   }
-  if (!membership) {
-    return NextResponse.json({ error: 'Current user is not a member of this tenant' }, { status: 403 });
+
+  if (roleData?.system_role === 'super_admin') {
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      typeof (body as Record<string, unknown>).tenant_id !== 'string'
+    ) {
+      return NextResponse.json({ error: 'A selected tenant is required to sync expenses' }, { status: 400 });
+    }
+    effectiveTenantId = (body as Record<string, string>).tenant_id;
+    const { data: tenant, error: tenantError } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('id', effectiveTenantId)
+      .maybeSingle();
+
+    if (tenantError) {
+      console.error('Failed to validate selected tenant for offline expense:', tenantError);
+      return NextResponse.json({ error: 'Unable to verify selected tenant' }, { status: 500 });
+    }
+    if (!tenant) {
+      return NextResponse.json({ error: 'Selected tenant does not exist' }, { status: 403 });
+    }
+  } else {
+    if (!tenantId) {
+      return NextResponse.json({ error: 'Tenant context is missing' }, { status: 403 });
+    }
+    if (submittedTenantId !== tenantId) {
+      return NextResponse.json({ error: 'Invalid expense details or tenant context' }, { status: 400 });
+    }
+
+    const { data: membership, error: membershipError } = await supabase
+      .from('tenant_members')
+      .select('tenant_id')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', authData.user.id)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error('Failed to verify tenant membership for offline expense:', membershipError);
+      return NextResponse.json({ error: 'Unable to verify tenant membership' }, { status: 500 });
+    }
+    if (!membership) {
+      return NextResponse.json({ error: 'Current user is not a member of this tenant' }, { status: 403 });
+    }
   }
+
+  const expense = submittedExpense;
 
   const expenseData = {
     ...expense,

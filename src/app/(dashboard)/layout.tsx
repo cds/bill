@@ -39,7 +39,7 @@ export default async function DashboardLayout({
       />
       <OfflineTenantPersistence
         tenantId={selectedTenantId ?? undefined}
-        enabled={systemRole !== 'super_admin'}
+        enabled={Boolean(selectedTenantId)}
       />
       <main className="flex-1 pb-20 sm:pb-6">{children}</main>
       <BottomNav systemRole={systemRole} />

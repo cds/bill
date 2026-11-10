@@ -10,9 +10,11 @@ vi.mock('@/app/api/invoices/route', () => ({
 function makeRequest(
   body: unknown,
   tenantId: string | null = 'tenant-123',
+  systemRole: string | null = null,
 ) {
   const headers = new Headers({ 'Content-Type': 'application/json' });
   if (tenantId) headers.set('x-tenant-id', tenantId);
+  if (systemRole) headers.set('x-system-role', systemRole);
   return new NextRequest('http://localhost/api/offline/invoices', {
     method: 'POST',
     headers,
@@ -76,6 +78,20 @@ describe('POST /api/offline/invoices', () => {
       party_name: offlineInvoice.party_name,
       items: offlineInvoice.items,
     });
+  });
+
+  it('lets a super admin sync an offline invoice to its selected tenant', async () => {
+    const { POST } = await import('@/app/api/offline/invoices/route');
+    const selectedTenantInvoice = { ...offlineInvoice, tenant_id: 'selected-tenant' };
+    const response = await POST(makeRequest(
+      selectedTenantInvoice,
+      'active-tenant',
+      'super_admin',
+    ));
+    const forwardedRequest = createInvoice.mock.calls[0][0] as Request;
+
+    expect(response.status).toBe(201);
+    expect(forwardedRequest.headers.get('x-tenant-id')).toBe('selected-tenant');
   });
 
   it('preserves server rejection status and details', async () => {

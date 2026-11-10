@@ -13,7 +13,6 @@ export default async function ExpensesPage() {
   const supabase = await createClient();
   const tenantId = await getActiveTenantId();
   const requestHeaders = await headers();
-  const systemRole = requestHeaders.get('x-system-role') || 'user';
 
   const { data: expenses, error } = await supabase
     .from('expenses')
@@ -33,11 +32,9 @@ export default async function ExpensesPage() {
     <ExpenseListClient
       expenses={expenses || []}
       canManageRecords={canManageRecords}
-      tenantId={systemRole === 'super_admin' ? undefined : tenantId}
+      tenantId={tenantId}
     />
   );
-
-  if (systemRole === 'super_admin') return expenseList;
 
   return (
     <PowerSyncProvider
