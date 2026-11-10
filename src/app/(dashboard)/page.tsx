@@ -5,6 +5,7 @@ import { formatCurrency } from '@/lib/utils';
 import { StatCard } from '@/components/shared/stat-card';
 import { Button } from '@/components/ui/button';
 import { OfflineSyncStatus } from '@/components/powersync/offline-sync-status';
+import { PowerSyncProvider } from '@/lib/powersync/provider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -175,8 +176,13 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Sync Controls */}
-      <OfflineSyncStatus />
+      {/* Sync Controls – requires PowerSync context */}
+      <PowerSyncProvider
+        tenantId={tenantId}
+        fallback={<p className="text-xs text-muted-foreground px-1" role="status">Initialising offline database…</p>}
+      >
+        <OfflineSyncStatus />
+      </PowerSyncProvider>
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
