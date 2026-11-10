@@ -38,6 +38,24 @@ vi.mock('@/components/expenses/offline-expenses', () => ({
   ),
 }));
 
+vi.mock('@/components/items/offline-items', () => ({
+  OfflineItems: ({ tenantId }: { tenantId: string }) => (
+    <p>Local items tenant: {tenantId}</p>
+  ),
+}));
+
+vi.mock('@/components/parties/offline-parties', () => ({
+  OfflineParties: ({ tenantId }: { tenantId: string }) => (
+    <p>Local parties tenant: {tenantId}</p>
+  ),
+}));
+
+vi.mock('@/components/sales/invoice-form', () => ({
+  InvoiceForm: ({ itemLookupTenantId }: { itemLookupTenantId: string }) => (
+    <p>Local new sale tenant: {itemLookupTenantId}</p>
+  ),
+}));
+
 describe('offline app entry', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -84,6 +102,23 @@ describe('offline app entry', () => {
 
     expect(container.textContent).toContain('Local expenses tenant: tenant-a');
     expect(container.textContent).not.toContain('needs an internet connection');
+  });
+
+  it.each([
+    ['/items', 'Local items tenant: tenant-a'],
+    ['/parties', 'Local parties tenant: tenant-a'],
+    ['/sales/new', 'Local new sale tenant: tenant-a'],
+  ])('opens local content when the failed route was %s', async (path, expectedContent) => {
+    window.history.replaceState(null, '', `/offline-app?requested=${encodeURIComponent(path)}`);
+    window.localStorage.setItem(getOfflineTenantStorageKey('user-a'), 'tenant-a');
+
+    await act(async () => {
+      root.render(<OfflineApp />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container.textContent).toContain(expectedContent);
+    expect(container.textContent).not.toContain('not available in the offline workspace');
   });
 
   it('does not open local data without a signed-in session', async () => {
@@ -164,7 +199,9 @@ describe('offline app entry', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const retryLink = container.querySelector('a');
-    expect(retryLink).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('a'))
+        .some((link) => link.href.includes('evil.example')),
+    ).toBe(false);
   });
 });

@@ -3,6 +3,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { ConnectionStatus } from '@/components/layout/connection-status';
 import { OfflineExpenses } from '@/components/expenses/offline-expenses';
+import { InvoiceForm } from '@/components/sales/invoice-form';
+import { OfflineItems } from '@/components/items/offline-items';
+import { OfflineParties } from '@/components/parties/offline-parties';
 import { OfflineSyncStatus } from '@/components/powersync/offline-sync-status';
 import { OfflineWorkspace } from '@/components/powersync/offline-workspace';
 import { OfflinePowerSyncProvider } from '@/lib/powersync/offline-provider';
@@ -20,6 +23,14 @@ type OfflineIdentity =
   | { status: 'tenant-choice'; userId: string; tenantIds: string[] }
   | { status: 'ready'; tenantId: string }
   | { status: 'error'; message: string };
+
+const OFFLINE_ROUTES = [
+  { path: '/offline-workspace', label: 'Workspace' },
+  { path: '/items', label: 'Items' },
+  { path: '/parties', label: 'Parties' },
+  { path: '/sales/new', label: 'New sale' },
+  { path: '/expenses', label: 'Expenses' },
+] as const;
 
 function getRequestedPath() {
   const requested = new URLSearchParams(window.location.search).get('requested');
@@ -114,9 +125,26 @@ export function OfflineApp() {
         <ConnectionStatus />
       </header>
 
-      {requestedPath && !['/expenses', '/offline-workspace'].includes(requestedPath) ? (
+      {identity.status === 'ready' ? (
+        <nav className="flex flex-wrap gap-2" aria-label="Offline workspace pages">
+          {OFFLINE_ROUTES.map(({ path, label }) => (
+            <a
+              key={path}
+              href={`/offline-app?requested=${encodeURIComponent(path)}`}
+              aria-current={requestedPath === path ? 'page' : undefined}
+              className={`inline-flex min-h-10 items-center rounded-md border px-3 text-sm ${
+                requestedPath === path ? 'bg-muted font-medium' : 'hover:bg-muted'
+              }`}
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+      ) : null}
+
+      {requestedPath && !OFFLINE_ROUTES.some(({ path }) => path === requestedPath) ? (
         <p className="rounded-lg border p-4 text-sm text-muted-foreground" role="status">
-          The requested page ({requestedPath}) needs an internet connection. Cached items and parties are available below.
+          The requested page ({requestedPath}) is not available in the offline workspace. Use the offline pages above or retry when connected.
         </p>
       ) : null}
 
@@ -174,10 +202,18 @@ export function OfflineApp() {
           fallback={<p role="status">Opening your local database…</p>}
         >
           <OfflineSyncStatus />
-          {requestedPath === '/expenses' ? (
-            <OfflineExpenses tenantId={identity.tenantId} />
+          {requestedPath === '/expenses' ? <OfflineExpenses tenantId={identity.tenantId} /> : null}
+          {requestedPath === '/items' ? <OfflineItems tenantId={identity.tenantId} /> : null}
+          {requestedPath === '/parties' ? <OfflineParties tenantId={identity.tenantId} /> : null}
+          {requestedPath === '/sales/new' ? (
+            <InvoiceForm itemLookupTenantId={identity.tenantId} />
           ) : null}
-          <OfflineWorkspace tenantId={identity.tenantId} />
+          {requestedPath === '/offline-workspace' || !requestedPath ? (
+            <OfflineWorkspace tenantId={identity.tenantId} />
+          ) : null}
+          {requestedPath && !OFFLINE_ROUTES.some(({ path }) => path === requestedPath) ? (
+            <OfflineWorkspace tenantId={identity.tenantId} />
+          ) : null}
         </OfflinePowerSyncProvider>
       ) : null}
 
