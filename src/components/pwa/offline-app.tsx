@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { ConnectionStatus } from '@/components/layout/connection-status';
 import { OfflineExpenses } from '@/components/expenses/offline-expenses';
+import { OfflineSyncStatus } from '@/components/powersync/offline-sync-status';
 import { OfflineWorkspace } from '@/components/powersync/offline-workspace';
 import { OfflinePowerSyncProvider } from '@/lib/powersync/offline-provider';
 import { createClient } from '@/lib/supabase/client';
@@ -172,6 +173,7 @@ export function OfflineApp() {
           tenantId={identity.tenantId}
           fallback={<p role="status">Opening your local database…</p>}
         >
+          <OfflineSyncStatus />
           {requestedPath === '/expenses' ? (
             <OfflineExpenses tenantId={identity.tenantId} />
           ) : null}

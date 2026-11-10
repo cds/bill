@@ -28,6 +28,10 @@ vi.mock('@/components/powersync/offline-workspace', () => ({
   ),
 }));
 
+vi.mock('@/components/powersync/offline-sync-status', () => ({
+  OfflineSyncStatus: () => <p>Local sync status</p>,
+}));
+
 vi.mock('@/components/expenses/offline-expenses', () => ({
   OfflineExpenses: ({ tenantId }: { tenantId: string }) => (
     <p>Local expenses tenant: {tenantId}</p>
