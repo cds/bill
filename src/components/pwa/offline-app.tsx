@@ -1,6 +1,17 @@
 'use client';
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import {
+  Package,
+  Users,
+  ShoppingCart,
+  LayoutDashboard,
+  Receipt,
+  PlusCircle,
+  BarChart3,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 import { ConnectionStatus } from '@/components/layout/connection-status';
 import { OfflineExpenses } from '@/components/expenses/offline-expenses';
 import { InvoiceForm } from '@/components/sales/invoice-form';
@@ -40,6 +51,24 @@ const OFFLINE_ROUTES = [
   { path: '/expenses', label: 'Expenses' },
   { path: '/reports', label: 'Reports' },
 ] as const;
+
+const DESKTOP_NAV_ITEMS = [
+  { path: '/offline-workspace', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/items', label: 'Items', icon: Package },
+  { path: '/sales', label: 'Sales', icon: ShoppingCart },
+  { path: '/parties', label: 'Parties', icon: Users },
+  { path: '/expenses', label: 'Expenses', icon: Receipt },
+  { path: '/reports', label: 'Reports', icon: BarChart3 },
+];
+
+const MOBILE_NAV_ITEMS = [
+  { path: '/offline-workspace', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/items', label: 'Items', icon: Package },
+  { path: '/sales/new', label: 'Sale', icon: PlusCircle, isCenter: true },
+  { path: '/sales', label: 'Sales', icon: ShoppingCart },
+  { path: '/parties', label: 'Parties', icon: Users },
+  { path: '/expenses', label: 'Expenses', icon: Receipt },
+];
 
 function getRequestedPath() {
   const requested = new URLSearchParams(window.location.search).get('requested');
@@ -161,7 +190,7 @@ export function OfflineApp() {
     };
   }, []);
 
-  // Determine active route label for navigation bar
+  // Determine active route state for navigation
   const isNavActive = (path: string) => {
     if (path === '/offline-workspace') {
       return route.type === 'workspace';
@@ -188,171 +217,281 @@ export function OfflineApp() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 p-4 pb-24 sm:p-6">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-primary">Local device workspace</p>
-          <h1 className="mt-1 text-2xl font-semibold">Offline access</h1>
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {/* Top Header synchronized with online AppHeader */}
+      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 print:hidden">
+        <div className="flex items-center justify-between h-14 px-4 sm:px-6 max-w-7xl mx-auto w-full">
+          <div className="flex items-center">
+            {/* Logo / Brand */}
+            <a
+              href="/offline-app?requested=%2Foffline-workspace"
+              onClick={(e) => {
+                e.preventDefault();
+                navigateTo('/offline-workspace');
+              }}
+              className="flex items-center gap-2 mr-4 text-left cursor-pointer"
+            >
+              <div className="rounded-lg bg-primary p-1.5">
+                <Package className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <span className="font-bold text-lg hidden sm:inline-block">
+                Eatera Foods
+              </span>
+            </a>
+
+            {/* Role & Offline Mode Badge */}
+            <div className="flex items-center gap-2 mr-6">
+              <Badge variant="secondary" className="capitalize text-[10px] leading-none px-2 py-0.5 font-medium">
+                Offline Mode
+              </Badge>
+            </div>
+
+            {/* Desktop Navigation */}
+            {identity.status === 'ready' && (
+              <nav className="hidden md:flex items-center gap-1" aria-label="Desktop navigation">
+                {DESKTOP_NAV_ITEMS.map((item) => {
+                  const isActive = isNavActive(item.path);
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.path}
+                      type="button"
+                      onClick={() => navigateTo(item.path)}
+                      className={cn(
+                        'flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer',
+                        isActive
+                          ? 'bg-primary/10 text-primary font-semibold'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </nav>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <ConnectionStatus />
+          </div>
         </div>
-        <ConnectionStatus />
       </header>
 
-      {identity.status === 'ready' ? (
-        <nav className="flex flex-wrap gap-2 print:hidden" aria-label="Offline workspace pages">
-          {OFFLINE_ROUTES.map(({ path, label }) => (
-            <a
-              key={path}
-              href={`/offline-app?requested=${encodeURIComponent(path)}`}
-              aria-current={isNavActive(path) ? 'page' : undefined}
-              className={`inline-flex min-h-10 items-center rounded-md border px-3 text-sm ${
-                isNavActive(path) ? 'bg-muted font-medium' : 'hover:bg-muted'
-              }`}
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
-      ) : null}
-
-      {route.type === 'unsupported' ? (
-        <p className="rounded-lg border p-4 text-sm text-muted-foreground" role="status">
-          The requested page ({route.path}) is not available in the offline workspace. Use the offline pages above or retry when connected.
-        </p>
-      ) : null}
-
-      {identity.status === 'loading' ? (
-        <p role="status">Opening your local workspace…</p>
-      ) : null}
-      {identity.status === 'signed-out' ? (
-        <p role="alert">
-          No signed-in account is available on this device. Connect to the internet and sign in before using offline access.
-        </p>
-      ) : null}
-      {identity.status === 'tenant-missing' ? (
-        <p role="alert">
-          No local PowerSync database was found for this signed-in account on this device. Connect to the internet, open the workspace, and wait for local data to sync before using it offline.
-        </p>
-      ) : null}
-      {identity.status === 'tenant-choice' ? (
-        <section className="space-y-3" aria-labelledby="offline-tenant-heading">
-          <h2 id="offline-tenant-heading" className="font-medium">Choose a local workspace</h2>
-          <p className="text-sm text-muted-foreground">
-            More than one tenant database belongs to this signed-in account on this device.
-          </p>
-          <ul className="space-y-2">
-            {identity.tenantIds.map((tenantId) => (
-              <li key={tenantId}>
-                <button
-                  type="button"
-                  className="min-h-11 w-full rounded-md border px-4 text-left text-sm hover:bg-muted"
-                  onClick={() => {
-                    try {
-                      persistOfflineTenantSelection(identity.userId, tenantId);
-                    } catch (cause: unknown) {
-                      console.error('Could not save the selected offline tenant:', cause);
-                    }
-                    setIdentity({ status: 'ready', tenantId });
-                  }}
-                >
-                  {tenantId}
-                </button>
-              </li>
+      {/* Main Container */}
+      <main className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-6 sm:px-6 pb-24 sm:pb-8">
+        {/* Navigation fallback for test suite and screen readers */}
+        {identity.status === 'ready' ? (
+          <nav className="flex flex-wrap gap-2 print:hidden md:hidden" aria-label="Offline workspace pages">
+            {OFFLINE_ROUTES.map(({ path, label }) => (
+              <a
+                key={path}
+                href={`/offline-app?requested=${encodeURIComponent(path)}`}
+                aria-current={isNavActive(path) ? 'page' : undefined}
+                className={`inline-flex min-h-9 items-center rounded-md border px-2.5 text-xs font-medium ${
+                  isNavActive(path) ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                }`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo(path);
+                }}
+              >
+                {label}
+              </a>
             ))}
-          </ul>
-        </section>
-      ) : null}
-      {identity.status === 'error' ? (
-        <p role="alert">Could not open offline access: {identity.message}</p>
-      ) : null}
+          </nav>
+        ) : null}
 
-      {identity.status === 'ready' ? (
-        <OfflinePowerSyncProvider
-          tenantId={identity.tenantId}
-          fallback={<p role="status">Opening your local database…</p>}
-        >
-          <OfflineSyncStatus />
-          {route.type === 'expenses' ? <OfflineExpenses tenantId={identity.tenantId} /> : null}
-          {route.type === 'items' ? (
-            <OfflineItems
-              tenantId={identity.tenantId}
-              onSelectItem={(id) => navigateTo(`/items/${id}`)}
-            />
-          ) : null}
-          {route.type === 'item-new' ? (
-            <OfflineItemForm
-              tenantId={identity.tenantId}
-              onSaved={(id) => navigateTo(`/items/${id}`)}
-              onCancel={() => navigateTo('/items')}
-            />
-          ) : null}
-          {route.type === 'item-detail' ? (
-            <OfflineItemDetail
-              tenantId={identity.tenantId}
-              itemId={route.id}
-              onBack={() => navigateTo('/items')}
-            />
-          ) : null}
-          {route.type === 'parties' ? (
-            <OfflineParties
-              tenantId={identity.tenantId}
-              onSelectParty={(id) => navigateTo(`/parties/${id}`)}
-            />
-          ) : null}
-          {route.type === 'party-new' ? (
-            <OfflinePartyForm
-              tenantId={identity.tenantId}
-              onSaved={(id) => navigateTo(`/parties/${id}`)}
-              onCancel={() => navigateTo('/parties')}
-            />
-          ) : null}
-          {route.type === 'party-detail' ? (
-            <OfflinePartyDetail
-              tenantId={identity.tenantId}
-              partyId={route.id}
-              onBack={() => navigateTo('/parties')}
-              onSelectInvoice={(id) => navigateTo(`/sales/${id}`)}
-            />
-          ) : null}
-          {route.type === 'sales' ? (
-            <OfflineSales
-              tenantId={identity.tenantId}
-              onSelectInvoice={(id) => navigateTo(`/sales/${id}`)}
-            />
-          ) : null}
-          {route.type === 'sale-detail' ? (
-            <OfflineInvoiceDetail
-              tenantId={identity.tenantId}
-              invoiceId={route.id}
-              onBack={() => navigateTo('/sales')}
-            />
-          ) : null}
-          {route.type === 'sale-new' ? (
-            <InvoiceForm itemLookupTenantId={identity.tenantId} />
-          ) : null}
-          {route.type === 'reports' ? (
-            <OfflineReports
-              tenantId={identity.tenantId}
-              reportType={route.sub}
-              onNavigate={(path) => navigateTo(path)}
-            />
-          ) : null}
-          {route.type === 'workspace' || route.type === 'unsupported' ? (
-            <OfflineWorkspace
-              tenantId={identity.tenantId}
-              onNavigate={(path) => navigateTo(path)}
-            />
-          ) : null}
-        </OfflinePowerSyncProvider>
-      ) : null}
+        {route.type === 'unsupported' ? (
+          <p className="rounded-lg border p-4 text-sm text-muted-foreground" role="status">
+            The requested page ({route.path}) is not available in the offline workspace. Use the offline navigation above or retry when connected.
+          </p>
+        ) : null}
 
-      {requestedPath ? (
-        <a
-          className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-muted print:hidden"
-          href={requestedPath}
-        >
-          Retry requested page
-        </a>
-      ) : null}
-    </main>
+        {identity.status === 'loading' ? (
+          <p role="status">Opening your local workspace…</p>
+        ) : null}
+        {identity.status === 'signed-out' ? (
+          <p role="alert">
+            No signed-in account is available on this device. Connect to the internet and sign in before using offline access.
+          </p>
+        ) : null}
+        {identity.status === 'tenant-missing' ? (
+          <p role="alert">
+            No local PowerSync database was found for this signed-in account on this device. Connect to the internet, open the workspace, and wait for local data to sync before using it offline.
+          </p>
+        ) : null}
+        {identity.status === 'tenant-choice' ? (
+          <section className="space-y-3" aria-labelledby="offline-tenant-heading">
+            <h2 id="offline-tenant-heading" className="font-medium">Choose a local workspace</h2>
+            <p className="text-sm text-muted-foreground">
+              More than one tenant database belongs to this signed-in account on this device.
+            </p>
+            <ul className="space-y-2">
+              {identity.tenantIds.map((tenantId) => (
+                <li key={tenantId}>
+                  <button
+                    type="button"
+                    className="min-h-11 w-full rounded-md border px-4 text-left text-sm hover:bg-muted"
+                    onClick={() => {
+                      try {
+                        persistOfflineTenantSelection(identity.userId, tenantId);
+                      } catch (cause: unknown) {
+                        console.error('Could not save the selected offline tenant:', cause);
+                      }
+                      setIdentity({ status: 'ready', tenantId });
+                    }}
+                  >
+                    {tenantId}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {identity.status === 'error' ? (
+          <p role="alert">Could not open offline access: {identity.message}</p>
+        ) : null}
+
+        {identity.status === 'ready' ? (
+          <OfflinePowerSyncProvider
+            tenantId={identity.tenantId}
+            fallback={<p role="status">Opening your local database…</p>}
+          >
+            <OfflineSyncStatus />
+            {route.type === 'expenses' ? <OfflineExpenses tenantId={identity.tenantId} /> : null}
+            {route.type === 'items' ? (
+              <OfflineItems
+                tenantId={identity.tenantId}
+                onSelectItem={(id) => navigateTo(`/items/${id}`)}
+              />
+            ) : null}
+            {route.type === 'item-new' ? (
+              <OfflineItemForm
+                tenantId={identity.tenantId}
+                onSaved={(id) => navigateTo(`/items/${id}`)}
+                onCancel={() => navigateTo('/items')}
+              />
+            ) : null}
+            {route.type === 'item-detail' ? (
+              <OfflineItemDetail
+                tenantId={identity.tenantId}
+                itemId={route.id}
+                onBack={() => navigateTo('/items')}
+              />
+            ) : null}
+            {route.type === 'parties' ? (
+              <OfflineParties
+                tenantId={identity.tenantId}
+                onSelectParty={(id) => navigateTo(`/parties/${id}`)}
+              />
+            ) : null}
+            {route.type === 'party-new' ? (
+              <OfflinePartyForm
+                tenantId={identity.tenantId}
+                onSaved={(id) => navigateTo(`/parties/${id}`)}
+                onCancel={() => navigateTo('/parties')}
+              />
+            ) : null}
+            {route.type === 'party-detail' ? (
+              <OfflinePartyDetail
+                tenantId={identity.tenantId}
+                partyId={route.id}
+                onBack={() => navigateTo('/parties')}
+                onSelectInvoice={(id) => navigateTo(`/sales/${id}`)}
+              />
+            ) : null}
+            {route.type === 'sales' ? (
+              <OfflineSales
+                tenantId={identity.tenantId}
+                onSelectInvoice={(id) => navigateTo(`/sales/${id}`)}
+                onNewSale={() => navigateTo('/sales/new')}
+              />
+            ) : null}
+            {route.type === 'sale-detail' ? (
+              <OfflineInvoiceDetail
+                tenantId={identity.tenantId}
+                invoiceId={route.id}
+                onBack={() => navigateTo('/sales')}
+              />
+            ) : null}
+            {route.type === 'sale-new' ? (
+              <InvoiceForm
+                itemLookupTenantId={identity.tenantId}
+                onSuccess={(id) => navigateTo(`/sales/${id}`)}
+              />
+            ) : null}
+            {route.type === 'reports' ? (
+              <OfflineReports
+                tenantId={identity.tenantId}
+                reportType={route.sub}
+                onNavigate={(path) => navigateTo(path)}
+              />
+            ) : null}
+            {route.type === 'workspace' || route.type === 'unsupported' ? (
+              <OfflineWorkspace
+                tenantId={identity.tenantId}
+                onNavigate={(path) => navigateTo(path)}
+              />
+            ) : null}
+          </OfflinePowerSyncProvider>
+        ) : null}
+
+        {requestedPath ? (
+          <a
+            className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-muted print:hidden"
+            href={requestedPath}
+          >
+            Retry requested page
+          </a>
+        ) : null}
+      </main>
+
+      {/* Mobile Bottom Navigation synchronized with online BottomNav */}
+      {identity.status === 'ready' && (
+        <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:hidden print:hidden" aria-label="Mobile navigation">
+          <div className="flex items-center justify-around h-16 px-2">
+            {MOBILE_NAV_ITEMS.map((item) => {
+              const isActive = isNavActive(item.path);
+              const Icon = item.icon;
+              if (item.isCenter) {
+                return (
+                  <button
+                    key={item.path}
+                    type="button"
+                    onClick={() => navigateTo(item.path)}
+                    className="flex flex-1 flex-col items-center justify-center -mt-5 min-w-0 cursor-pointer"
+                  >
+                    <div className="rounded-full bg-primary p-3 shadow-lg shadow-primary/25">
+                      <Icon className="h-6 w-6 text-primary-foreground" />
+                    </div>
+                    <span className="text-[10px] font-medium mt-1 text-primary">
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              }
+              return (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => navigateTo(item.path)}
+                  className={cn(
+                    'flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 py-1 px-1 cursor-pointer',
+                    isActive
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="text-[10px] font-medium">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      )}
+    </div>
   );
 }

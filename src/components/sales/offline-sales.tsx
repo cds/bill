@@ -3,6 +3,8 @@
 import { useQuery } from '@powersync/react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
 import { SyncBadge } from '@/components/powersync/sync-badge';
 import { OfflineInvoiceStatusList } from './offline-invoice-status';
 
@@ -20,9 +22,11 @@ type SyncedInvoice = {
 export function OfflineSales({
   tenantId,
   onSelectInvoice,
+  onNewSale,
 }: {
   tenantId: string;
   onSelectInvoice?: (invoiceId: string) => void;
+  onNewSale?: () => void;
 }) {
   const invoices = useQuery<SyncedInvoice>(
     `SELECT id, invoice_number, invoice_date, party_name, payment_type,
@@ -42,6 +46,27 @@ export function OfflineSales({
 
   return (
     <section className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Sales</h1>
+          <p className="text-sm text-muted-foreground">
+            Offline invoices and locally synced sales history
+          </p>
+        </div>
+        {onNewSale ? (
+          <Button onClick={onNewSale} size="sm" className="gap-1.5">
+            <Plus className="h-4 w-4" /> Add Sale
+          </Button>
+        ) : (
+          <a
+            href="/offline-app?requested=%2Fsales%2Fnew"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4 mr-1.5" /> Add Sale
+          </a>
+        )}
+      </div>
+
       {/* Locally saved offline invoices with their sync status */}
       <OfflineInvoiceStatusList tenantId={tenantId} />
 

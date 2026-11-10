@@ -63,8 +63,7 @@ export function OfflineInvoiceStatusList({ tenantId }: { tenantId: string }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Cached stock is an estimate. The server checks current stock before accepting each invoice.
-          A server invoice number appears only after acceptance.
+          Pending invoices stored locally · Synchronizes automatically when online
         </p>
         {query.error ? (
           <p role="alert" className="text-sm text-destructive">

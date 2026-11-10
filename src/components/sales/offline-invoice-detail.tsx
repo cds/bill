@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { ArrowLeft, Printer } from 'lucide-react';
+import { SyncBadge } from '@/components/powersync/sync-badge';
 import type { NewOfflineInvoiceItem } from '@/lib/powersync/invoice-writes';
 
 type SyncedInvoice = {
@@ -164,8 +165,11 @@ export function OfflineInvoiceDetail({
           </Button>
         </div>
 
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300 print:hidden">
-          <strong>Offline Sale:</strong> Saved on this device. Official invoice number will be assigned once synced.
+        <div className="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300 print:hidden">
+          <span className="font-medium">
+            Offline Invoice: Saved locally on this device · Queued for online sync
+          </span>
+          <SyncBadge status="pending" label="Pending Sync" />
         </div>
 
         <Card className="p-6 print:border-none print:p-0 print:shadow-none">
@@ -173,10 +177,10 @@ export function OfflineInvoiceDetail({
             <div className="flex items-start justify-between">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">EATERA FOODS</h1>
-                <p className="mt-1 text-xs text-muted-foreground">Sale Receipt (Offline Draft)</p>
+                <p className="mt-1 text-xs text-muted-foreground">Sale Receipt</p>
               </div>
               <div className="text-right">
-                <Badge variant="secondary">Pending sync</Badge>
+                <SyncBadge status="pending" label="Pending sync" />
                 <p className="mt-1 text-xs text-muted-foreground">{formatDate(localInvoice.invoice_date)}</p>
               </div>
             </div>

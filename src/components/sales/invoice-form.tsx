@@ -144,10 +144,12 @@ export function InvoiceForm({
   invoice,
   invoiceItems = [],
   itemLookupTenantId,
+  onSuccess,
 }: {
   invoice?: Invoice;
   invoiceItems?: ExistingInvoiceItem[];
   itemLookupTenantId?: string;
+  onSuccess?: (invoiceId: string) => void;
 }) {
   const router = useRouter();
   const database = usePowerSyncOrNull();
@@ -268,7 +270,7 @@ export function InvoiceForm({
           throw new Error('The offline invoice database is not ready. Reopen this form when the local workspace is available.');
         }
 
-        await saveInvoiceLocally(database, itemLookupTenantId, {
+        const localInvoiceId = await saveInvoiceLocally(database, itemLookupTenantId, {
           invoice_date: state.invoice_date,
           party_id: state.party.id,
           party_name: state.party.name,
@@ -280,8 +282,15 @@ export function InvoiceForm({
           estimated_total: grandTotal,
         });
         createOperationRef.current = null;
-        dispatch({ type: 'RESET' });
-        toast.success('Saved locally. Pending sync; the official invoice number appears after server acceptance.');
+        toast.success('Sale recorded offline and queued for sync');
+
+        if (saveAndNew) {
+          dispatch({ type: 'RESET' });
+        } else if (onSuccess) {
+          onSuccess(localInvoiceId);
+        } else {
+          router.push(`/sales/${localInvoiceId}`);
+        }
         return;
       }
 
@@ -313,6 +322,8 @@ export function InvoiceForm({
       
       if (!invoice && saveAndNew) {
         dispatch({ type: 'RESET' });
+      } else if (onSuccess) {
+        onSuccess(invoice?.id ?? data.id);
       } else {
         router.push(`/sales/${invoice?.id ?? data.id}`);
       }
@@ -339,11 +350,6 @@ export function InvoiceForm({
       ) : null}
 
       <div className="grid gap-6">
-        {!invoice && itemLookupTenantId ? (
-          <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-muted-foreground">
-            Offline invoices save locally first. Cached stock is an estimate; the server rejects an invoice if current stock is insufficient.
-          </p>
-        ) : null}
         <Card>
           <CardContent className="p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
