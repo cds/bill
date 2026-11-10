@@ -23,15 +23,21 @@ describe('offline workspace tenant isolation', () => {
   let root: Root;
 
   beforeEach(() => {
-    mockUseQuery.mockImplementation((sql: string, parameters: string[]) => ({
-      data: tenantRows.filter((row) =>
-        sql.includes(row.id.startsWith('item-') ? 'FROM items' : 'FROM parties') &&
-        row.tenant_id === parameters[0] &&
-        row.deleted_at === null,
-      ),
-      isLoading: false,
-      error: null,
-    }));
+    mockUseQuery.mockImplementation((sql: string, parameters: string[]) => {
+      // invoice_sync_status pending count — local-only table, no stream, no deleted_at
+      if (sql.includes('FROM invoice_sync_status')) {
+        return { data: [{ count: 0 }], isLoading: false, error: null };
+      }
+      return {
+        data: tenantRows.filter((row) =>
+          sql.includes(row.id.startsWith('item-') ? 'FROM items' : row.id.startsWith('party-') ? 'FROM parties' : 'FROM invoices') &&
+          row.tenant_id === parameters[0] &&
+          row.deleted_at === null,
+        ),
+        isLoading: false,
+        error: null,
+      };
+    });
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -53,12 +59,17 @@ describe('offline workspace tenant isolation', () => {
     expect(container.textContent).not.toContain('B-only item');
     expect(container.textContent).not.toContain('B-only party');
 
-    for (const [sql, parameters, options] of mockUseQuery.mock.calls) {
+    // Calls that query synced tables must be scoped to the tenant and use streams
+    const syncedCalls = mockUseQuery.mock.calls.filter(
+      ([sql]: [string]) => !sql.includes('FROM invoice_sync_status'),
+    );
+    for (const [sql, parameters, options] of syncedCalls) {
       expect(sql).toMatch(/WHERE tenant_id = \? AND deleted_at IS NULL/);
       expect(parameters).toEqual(['tenant-a']);
       expect(options.streams[0].parameters).toEqual({ tenant_id: 'tenant-a' });
       expect(options.streams[0].waitForStream).toBeUndefined();
     }
-    expect(mockUseQuery).toHaveBeenCalledTimes(2);
+    // items + parties + invoices = 3 synced queries; +1 for invoice_sync_status count
+    expect(mockUseQuery).toHaveBeenCalledTimes(4);
   });
 });

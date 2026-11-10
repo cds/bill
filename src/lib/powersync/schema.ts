@@ -38,6 +38,52 @@ const parties = new Table(
   { indexes: { by_tenant: ['tenant_id'] } },
 );
 
+const invoices = new Table(
+  {
+    tenant_id: column.text,
+    invoice_number: column.integer,
+    invoice_date: column.text,
+    party_id: column.text,
+    party_name: column.text,
+    payment_type: column.text,
+    payment_method: column.text,
+    subtotal: column.real,
+    tax_amount: column.real,
+    discount_amount: column.real,
+    total_amount: column.real,
+    amount_paid: column.real,
+    balance_due: column.real,
+    notes: column.text,
+    created_at: column.text,
+    updated_at: column.text,
+    deleted_at: column.text,
+    deleted_by: column.text,
+    deleted_reason: column.text,
+    change_reason: column.text,
+  },
+  { indexes: { by_tenant: ['tenant_id'], by_date: ['tenant_id', 'invoice_date'] } },
+);
+
+const invoice_items = new Table(
+  {
+    tenant_id: column.text,
+    invoice_id: column.text,
+    item_id: column.text,
+    item_name: column.text,
+    quantity: column.real,
+    unit: column.text,
+    rate: column.real,
+    tax_percent: column.real,
+    tax_amount: column.real,
+    discount_percent: column.real,
+    discount_amount: column.real,
+    amount: column.real,
+    created_at: column.text,
+    deleted_at: column.text,
+  },
+  { indexes: { by_invoice: ['invoice_id'], by_tenant: ['tenant_id'] } },
+);
+
 const expenses = Table.createInsertOnly(
   {
     tenant_id: column.text,
@@ -101,6 +147,8 @@ const invoice_sync_status = Table.createLocalOnly(
 export const powerSyncSchema = new Schema({
   items,
   parties,
+  invoices,
+  invoice_items,
   expenses,
   expense_sync_status,
   offline_invoices,

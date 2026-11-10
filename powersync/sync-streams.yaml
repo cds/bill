@@ -48,3 +48,47 @@ streams:
                 )
             )
           )
+      - |
+        SELECT invoices.*
+        FROM invoices
+        WHERE invoices.deleted_at IS NULL
+          AND (
+            invoices.tenant_id IN (
+              SELECT tenant_id
+              FROM tenant_members
+              WHERE user_id = auth.user_id()
+                AND tenant_id = subscription.parameter('tenant_id')
+            )
+            OR invoices.tenant_id IN (
+              SELECT id
+              FROM tenants
+              WHERE id = subscription.parameter('tenant_id')
+                AND auth.user_id() IN (
+                  SELECT id
+                  FROM users
+                  WHERE system_role = 'super_admin'
+                )
+            )
+          )
+      - |
+        SELECT invoice_items.*
+        FROM invoice_items
+        WHERE invoice_items.deleted_at IS NULL
+          AND (
+            invoice_items.tenant_id IN (
+              SELECT tenant_id
+              FROM tenant_members
+              WHERE user_id = auth.user_id()
+                AND tenant_id = subscription.parameter('tenant_id')
+            )
+            OR invoice_items.tenant_id IN (
+              SELECT id
+              FROM tenants
+              WHERE id = subscription.parameter('tenant_id')
+                AND auth.user_id() IN (
+                  SELECT id
+                  FROM users
+                  WHERE system_role = 'super_admin'
+                )
+            )
+          )

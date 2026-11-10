@@ -6,6 +6,7 @@ import { OfflineExpenses } from '@/components/expenses/offline-expenses';
 import { InvoiceForm } from '@/components/sales/invoice-form';
 import { OfflineItems } from '@/components/items/offline-items';
 import { OfflineParties } from '@/components/parties/offline-parties';
+import { OfflineSales } from '@/components/sales/offline-sales';
 import { OfflineSyncStatus } from '@/components/powersync/offline-sync-status';
 import { OfflineWorkspace } from '@/components/powersync/offline-workspace';
 import { OfflinePowerSyncProvider } from '@/lib/powersync/offline-provider';
@@ -28,6 +29,7 @@ const OFFLINE_ROUTES = [
   { path: '/offline-workspace', label: 'Workspace' },
   { path: '/items', label: 'Items' },
   { path: '/parties', label: 'Parties' },
+  { path: '/sales', label: 'Sales' },
   { path: '/sales/new', label: 'New sale' },
   { path: '/expenses', label: 'Expenses' },
 ] as const;
@@ -205,6 +207,7 @@ export function OfflineApp() {
           {requestedPath === '/expenses' ? <OfflineExpenses tenantId={identity.tenantId} /> : null}
           {requestedPath === '/items' ? <OfflineItems tenantId={identity.tenantId} /> : null}
           {requestedPath === '/parties' ? <OfflineParties tenantId={identity.tenantId} /> : null}
+          {requestedPath === '/sales' ? <OfflineSales tenantId={identity.tenantId} /> : null}
           {requestedPath === '/sales/new' ? (
             <InvoiceForm itemLookupTenantId={identity.tenantId} />
           ) : null}
