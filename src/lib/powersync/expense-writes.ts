@@ -42,9 +42,21 @@ export async function saveExpenseLocally(
       ],
     );
     await transaction.execute(
-      `INSERT INTO expense_sync_status (id, tenant_id, status, error, updated_at)
-       VALUES (?, ?, 'pending', NULL, ?)`,
-      [id, tenantId, now],
+      `INSERT INTO expense_sync_status
+        (id, tenant_id, date, category, amount, payment_status, payment_mode, notes,
+         created_at, status, error, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'paid', ?, ?, ?, 'pending', NULL, ?)`,
+      [
+        id,
+        tenantId,
+        expense.date,
+        expense.category,
+        expense.amount,
+        expense.payment_mode,
+        expense.notes,
+        now,
+        now,
+      ],
     );
   });
 

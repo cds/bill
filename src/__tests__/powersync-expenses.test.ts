@@ -99,6 +99,12 @@ describe('PowerSync offline expenses', () => {
     expect(execute.mock.calls[1][1]).toEqual([
       EXPENSE_ID,
       TENANT_ID,
+      expenseData.date,
+      expenseData.category,
+      expenseData.amount,
+      'cash',
+      'Generator',
+      expect.any(String),
       expect.any(String),
     ]);
   });

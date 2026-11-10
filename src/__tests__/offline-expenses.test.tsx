@@ -72,7 +72,9 @@ describe('offline expense list', () => {
     expect(container.querySelector('[data-expense-form-tenant="tenant-a"]')).not.toBeNull();
 
     const [sql, parameters] = mockUseQuery.mock.calls[0];
-    expect(sql).toContain('WHERE e.tenant_id = ?');
+    expect(sql).toContain('FROM expense_sync_status s');
+    expect(sql).toContain('LEFT JOIN expenses e ON e.id = s.id');
+    expect(sql).toContain('WHERE s.tenant_id = ?');
     expect(parameters).toEqual(['tenant-a']);
   });
 });

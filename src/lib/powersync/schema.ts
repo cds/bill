@@ -55,6 +55,13 @@ const expenses = Table.createInsertOnly(
 const expense_sync_status = Table.createLocalOnly(
   {
     tenant_id: column.text,
+    date: column.text,
+    category: column.text,
+    amount: column.real,
+    payment_status: column.text,
+    payment_mode: column.text,
+    notes: column.text,
+    created_at: column.text,
     status: column.text,
     error: column.text,
     updated_at: column.text,

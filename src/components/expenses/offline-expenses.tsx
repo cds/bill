@@ -24,12 +24,18 @@ const EMPTY_EXPENSES: OfflineExpense[] = [];
 export function OfflineExpenses({ tenantId }: { tenantId: string }) {
   const [formOpen, setFormOpen] = useState(false);
   const expenses = useQuery<OfflineExpense>(
-    `SELECT e.id, e.date, e.category, e.amount, e.payment_status, e.payment_mode,
-            e.notes, e.created_at, s.status AS sync_status, s.error AS sync_error
-     FROM expenses e
-     JOIN expense_sync_status s ON s.id = e.id
-     WHERE e.tenant_id = ?
-     ORDER BY e.created_at DESC`,
+    `SELECT s.id, COALESCE(s.date, e.date) AS date,
+            COALESCE(s.category, e.category) AS category,
+            COALESCE(s.amount, e.amount) AS amount,
+            COALESCE(s.payment_status, e.payment_status) AS payment_status,
+            COALESCE(s.payment_mode, e.payment_mode) AS payment_mode,
+            COALESCE(s.notes, e.notes) AS notes,
+            COALESCE(s.created_at, e.created_at) AS created_at,
+            s.status AS sync_status, s.error AS sync_error
+     FROM expense_sync_status s
+     LEFT JOIN expenses e ON e.id = s.id
+     WHERE s.tenant_id = ? AND COALESCE(s.category, e.category) IS NOT NULL
+     ORDER BY COALESCE(s.created_at, e.created_at) DESC`,
     [tenantId],
   );
   const rows = expenses.data ?? EMPTY_EXPENSES;
