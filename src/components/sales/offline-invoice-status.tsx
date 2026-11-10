@@ -117,13 +117,21 @@ export function OfflineInvoiceStatusList({ tenantId }: { tenantId: string }) {
                   </Link>
                 </>
               ) : null}
+              {invoice.sync_status === 'pending' ? (
+                <a
+                  href={`/offline-app?requested=${encodeURIComponent(`/sales/${invoice.id}`)}`}
+                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                >
+                  View receipt
+                </a>
+              ) : null}
               {invoice.sync_status === 'synced' && invoice.server_invoice_id ? (
-                <Link
-                  href={`/sales/${invoice.server_invoice_id}`}
+                <a
+                  href={`/offline-app?requested=${encodeURIComponent(`/sales/${invoice.server_invoice_id}`)}`}
                   className={buttonVariants({ variant: 'outline', size: 'sm' })}
                 >
                   View invoice #{invoice.server_invoice_number}
-                </Link>
+                </a>
               ) : null}
             </div>
           </div>

@@ -84,7 +84,7 @@ const invoice_items = new Table(
   { indexes: { by_invoice: ['invoice_id'], by_tenant: ['tenant_id'] } },
 );
 
-const expenses = Table.createInsertOnly(
+const expenses = new Table(
   {
     tenant_id: column.text,
     date: column.text,
@@ -94,8 +94,9 @@ const expenses = Table.createInsertOnly(
     payment_mode: column.text,
     notes: column.text,
     created_at: column.text,
+    deleted_at: column.text,
   },
-  { indexes: { by_tenant: ['tenant_id'] } },
+  { indexes: { by_tenant: ['tenant_id'], by_date: ['tenant_id', 'date'] } },
 );
 
 const expense_sync_status = Table.createLocalOnly(

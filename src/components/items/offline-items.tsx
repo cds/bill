@@ -13,7 +13,13 @@ type OfflineItem = {
   low_stock_threshold: number | null;
 };
 
-export function OfflineItems({ tenantId }: { tenantId: string }) {
+export function OfflineItems({
+  tenantId,
+  onSelectItem,
+}: {
+  tenantId: string;
+  onSelectItem?: (itemId: string) => void;
+}) {
   const items = useQuery<OfflineItem>(
     `SELECT id, name, unit, sale_price, purchase_price, current_stock, low_stock_threshold
      FROM items
@@ -54,20 +60,31 @@ export function OfflineItems({ tenantId }: { tenantId: string }) {
             const isLowStock = item.low_stock_threshold !== null &&
               stock <= item.low_stock_threshold;
             return (
-              <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{item.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    Stock: {stock} {item.unit || ''}
-                    {isLowStock ? ' · Low stock' : ''}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right text-sm">
-                  <p>Sale {formatCurrency(item.sale_price ?? 0)}</p>
-                  <p className="text-muted-foreground">
-                    Purchase {formatCurrency(item.purchase_price ?? 0)}
-                  </p>
-                </div>
+              <li key={item.id} className="p-4 hover:bg-muted/50 transition-colors">
+                <a
+                  href={`/offline-app?requested=${encodeURIComponent(`/items/${item.id}`)}`}
+                  className="flex flex-wrap items-center justify-between gap-3"
+                  onClick={(e) => {
+                    if (onSelectItem) {
+                      e.preventDefault();
+                      onSelectItem(item.id);
+                    }
+                  }}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{item.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Stock: {stock} {item.unit || ''}
+                      {isLowStock ? ' · Low stock' : ''}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right text-sm">
+                    <p>Sale {formatCurrency(item.sale_price ?? 0)}</p>
+                    <p className="text-muted-foreground">
+                      Purchase {formatCurrency(item.purchase_price ?? 0)}
+                    </p>
+                  </div>
+                </a>
               </li>
             );
           })}

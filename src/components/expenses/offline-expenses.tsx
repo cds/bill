@@ -38,7 +38,29 @@ export function OfflineExpenses({ tenantId }: { tenantId: string }) {
      ORDER BY COALESCE(s.created_at, e.created_at) DESC`,
     [tenantId],
   );
-  const rows = expenses.data ?? EMPTY_EXPENSES;
+
+  const syncedExpenses = useQuery<OfflineExpense>(
+    `SELECT id, date, category, amount, payment_status, payment_mode, notes, created_at,
+            'synced' AS sync_status, NULL AS sync_error
+     FROM expenses
+     WHERE tenant_id = ? AND deleted_at IS NULL
+       AND id NOT IN (SELECT id FROM expense_sync_status WHERE tenant_id = ?)
+     ORDER BY date DESC, created_at DESC
+     LIMIT 100`,
+    [tenantId, tenantId],
+    {
+      streams: [{
+        name: 'tenant_data',
+        parameters: { tenant_id: tenantId },
+      }],
+    },
+  );
+
+  const pendingRows = expenses.data ?? EMPTY_EXPENSES;
+  const syncedRows = syncedExpenses.data ?? EMPTY_EXPENSES;
+  const pendingIds = new Set(pendingRows.map((r) => r.id));
+  const uniqueSyncedRows = syncedRows.filter((r) => !pendingIds.has(r.id));
+  const allRows = [...pendingRows, ...uniqueSyncedRows];
 
   return (
     <section className="space-y-4">
@@ -58,15 +80,15 @@ export function OfflineExpenses({ tenantId }: { tenantId: string }) {
         </p>
       ) : null}
       {expenses.isLoading ? <p role="status">Loading local expenses…</p> : null}
-      {!expenses.isLoading && !expenses.error && rows.length === 0 ? (
+      {!expenses.isLoading && !expenses.error && allRows.length === 0 ? (
         <p className="rounded-lg border p-4 text-sm text-muted-foreground" role="status">
           No expenses are stored on this device yet.
         </p>
       ) : null}
 
-      {rows.length > 0 ? (
+      {allRows.length > 0 ? (
         <ul className="divide-y rounded-lg border">
-          {rows.map((expense) => (
+          {allRows.map((expense) => (
             <li key={expense.id} className="space-y-2 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

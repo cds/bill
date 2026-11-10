@@ -16,7 +16,13 @@ type SyncedInvoice = {
   balance_due: number;
 };
 
-export function OfflineSales({ tenantId }: { tenantId: string }) {
+export function OfflineSales({
+  tenantId,
+  onSelectInvoice,
+}: {
+  tenantId: string;
+  onSelectInvoice?: (invoiceId: string) => void;
+}) {
   const invoices = useQuery<SyncedInvoice>(
     `SELECT id, invoice_number, invoice_date, party_name, payment_type,
             total_amount, amount_paid, balance_due
@@ -69,26 +75,37 @@ export function OfflineSales({ tenantId }: { tenantId: string }) {
               return (
                 <li
                   key={invoice.id}
-                  className="flex flex-wrap items-center justify-between gap-3 p-4"
+                  className="p-4 hover:bg-muted/50 transition-colors"
                 >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium">#{invoice.invoice_number}</p>
-                      {isPaid ? (
-                        <Badge variant="outline" className="border-green-300 text-green-700 dark:border-green-700 dark:text-green-400">
-                          Paid
-                        </Badge>
-                      ) : isPartial ? (
-                        <Badge variant="secondary">Partial</Badge>
-                      ) : (
-                        <Badge variant="destructive">Unpaid</Badge>
-                      )}
+                  <a
+                    href={`/offline-app?requested=${encodeURIComponent(`/sales/${invoice.id}`)}`}
+                    className="flex flex-wrap items-center justify-between gap-3"
+                    onClick={(e) => {
+                      if (onSelectInvoice) {
+                        e.preventDefault();
+                        onSelectInvoice(invoice.id);
+                      }
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">#{invoice.invoice_number}</p>
+                        {isPaid ? (
+                          <Badge variant="outline" className="border-green-300 text-green-700 dark:border-green-700 dark:text-green-400">
+                            Paid
+                          </Badge>
+                        ) : isPartial ? (
+                          <Badge variant="secondary">Partial</Badge>
+                        ) : (
+                          <Badge variant="destructive">Unpaid</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {formatDate(invoice.invoice_date)} · {invoice.party_name}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {formatDate(invoice.invoice_date)} · {invoice.party_name}
-                    </p>
-                  </div>
-                  <p className="shrink-0 font-medium">{formatCurrency(invoice.total_amount)}</p>
+                    <p className="shrink-0 font-medium">{formatCurrency(invoice.total_amount)}</p>
+                  </a>
                 </li>
               );
             })}

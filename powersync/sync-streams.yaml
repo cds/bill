@@ -92,3 +92,25 @@ streams:
                 )
             )
           )
+      - |
+        SELECT expenses.*
+        FROM expenses
+        WHERE expenses.deleted_at IS NULL
+          AND (
+            expenses.tenant_id IN (
+              SELECT tenant_id
+              FROM tenant_members
+              WHERE user_id = auth.user_id()
+                AND tenant_id = subscription.parameter('tenant_id')
+            )
+            OR expenses.tenant_id IN (
+              SELECT id
+              FROM tenants
+              WHERE id = subscription.parameter('tenant_id')
+                AND auth.user_id() IN (
+                  SELECT id
+                  FROM users
+                  WHERE system_role = 'super_admin'
+                )
+            )
+          )

@@ -13,7 +13,13 @@ type OfflineParty = {
   balance: number | null;
 };
 
-export function OfflineParties({ tenantId }: { tenantId: string }) {
+export function OfflineParties({
+  tenantId,
+  onSelectParty,
+}: {
+  tenantId: string;
+  onSelectParty?: (partyId: string) => void;
+}) {
   const parties = useQuery<OfflineParty>(
     `SELECT id, name, billing_name, phone, address, type, balance
      FROM parties
@@ -50,19 +56,30 @@ export function OfflineParties({ tenantId }: { tenantId: string }) {
       {parties.data.length > 0 ? (
         <ul className="divide-y rounded-lg border">
           {parties.data.map((party) => (
-            <li key={party.id} className="flex flex-wrap items-start justify-between gap-3 p-4">
-              <div className="min-w-0">
-                <p className="truncate font-medium">{party.billing_name || party.name}</p>
-                <p className="text-sm capitalize text-muted-foreground">
-                  {party.type}{party.phone ? ` · ${party.phone}` : ''}
-                </p>
-                {party.address ? (
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                    {party.address}
+            <li key={party.id} className="p-4 hover:bg-muted/50 transition-colors">
+              <a
+                href={`/offline-app?requested=${encodeURIComponent(`/parties/${party.id}`)}`}
+                className="flex flex-wrap items-start justify-between gap-3"
+                onClick={(e) => {
+                  if (onSelectParty) {
+                    e.preventDefault();
+                    onSelectParty(party.id);
+                  }
+                }}
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{party.billing_name || party.name}</p>
+                  <p className="text-sm capitalize text-muted-foreground">
+                    {party.type}{party.phone ? ` · ${party.phone}` : ''}
                   </p>
-                ) : null}
-              </div>
-              <p className="shrink-0 text-sm">Balance {formatCurrency(party.balance ?? 0)}</p>
+                  {party.address ? (
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                      {party.address}
+                    </p>
+                  ) : null}
+                </div>
+                <p className="shrink-0 text-sm font-medium">Balance {formatCurrency(party.balance ?? 0)}</p>
+              </a>
             </li>
           ))}
         </ul>

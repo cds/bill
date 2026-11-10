@@ -5,8 +5,11 @@ import { ConnectionStatus } from '@/components/layout/connection-status';
 import { OfflineExpenses } from '@/components/expenses/offline-expenses';
 import { InvoiceForm } from '@/components/sales/invoice-form';
 import { OfflineItems } from '@/components/items/offline-items';
+import { OfflineItemDetail } from '@/components/items/offline-item-detail';
 import { OfflineParties } from '@/components/parties/offline-parties';
+import { OfflinePartyDetail } from '@/components/parties/offline-party-detail';
 import { OfflineSales } from '@/components/sales/offline-sales';
+import { OfflineInvoiceDetail } from '@/components/sales/offline-invoice-detail';
 import { OfflineSyncStatus } from '@/components/powersync/offline-sync-status';
 import { OfflineWorkspace } from '@/components/powersync/offline-workspace';
 import { OfflinePowerSyncProvider } from '@/lib/powersync/offline-provider';
@@ -48,6 +51,30 @@ function subscribeToLocation(callback: () => void) {
   return () => window.removeEventListener('popstate', callback);
 }
 
+function parseRequestedRoute(path: string | null) {
+  if (!path || path === '/' || path === '/offline-workspace') {
+    return { type: 'workspace' as const };
+  }
+  if (path === '/expenses') return { type: 'expenses' as const };
+  if (path === '/sales/new') return { type: 'sale-new' as const };
+  if (path === '/sales') return { type: 'sales' as const };
+  const saleMatch = path.match(/^\/sales\/([^/]+)$/);
+  if (saleMatch && saleMatch[1] !== 'new') {
+    return { type: 'sale-detail' as const, id: decodeURIComponent(saleMatch[1]) };
+  }
+  if (path === '/items') return { type: 'items' as const };
+  const itemMatch = path.match(/^\/items\/([^/]+)$/);
+  if (itemMatch) {
+    return { type: 'item-detail' as const, id: decodeURIComponent(itemMatch[1]) };
+  }
+  if (path === '/parties') return { type: 'parties' as const };
+  const partyMatch = path.match(/^\/parties\/([^/]+)$/);
+  if (partyMatch) {
+    return { type: 'party-detail' as const, id: decodeURIComponent(partyMatch[1]) };
+  }
+  return { type: 'unsupported' as const, path };
+}
+
 export function OfflineApp() {
   const [identity, setIdentity] = useState<OfflineIdentity>({ status: 'loading' });
   const requestedPath = useSyncExternalStore(
@@ -55,6 +82,13 @@ export function OfflineApp() {
     getRequestedPath,
     () => null,
   );
+
+  const route = parseRequestedRoute(requestedPath);
+
+  const navigateTo = (path: string) => {
+    window.history.pushState({}, '', `/offline-app?requested=${encodeURIComponent(path)}`);
+    window.dispatchEvent(new Event('popstate'));
+  };
 
   useEffect(() => {
     let active = true;
@@ -70,9 +104,7 @@ export function OfflineApp() {
         }
 
         const storageKey = getOfflineTenantStorageKey(data.session.user.id);
-        const savedTenantId = window.localStorage.getItem(
-          storageKey,
-        );
+        const savedTenantId = window.localStorage.getItem(storageKey);
 
         let tenantId = savedTenantId;
         if (!tenantId) {
@@ -117,6 +149,29 @@ export function OfflineApp() {
     };
   }, []);
 
+  // Determine active route label for navigation bar
+  const isNavActive = (path: string) => {
+    if (path === '/offline-workspace') {
+      return route.type === 'workspace';
+    }
+    if (path === '/items') {
+      return route.type === 'items' || route.type === 'item-detail';
+    }
+    if (path === '/parties') {
+      return route.type === 'parties' || route.type === 'party-detail';
+    }
+    if (path === '/sales') {
+      return route.type === 'sales' || route.type === 'sale-detail';
+    }
+    if (path === '/sales/new') {
+      return route.type === 'sale-new';
+    }
+    if (path === '/expenses') {
+      return route.type === 'expenses';
+    }
+    return false;
+  };
+
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 p-4 pb-24 sm:p-6">
       <header className="flex items-start justify-between gap-4">
@@ -128,14 +183,14 @@ export function OfflineApp() {
       </header>
 
       {identity.status === 'ready' ? (
-        <nav className="flex flex-wrap gap-2" aria-label="Offline workspace pages">
+        <nav className="flex flex-wrap gap-2 print:hidden" aria-label="Offline workspace pages">
           {OFFLINE_ROUTES.map(({ path, label }) => (
             <a
               key={path}
               href={`/offline-app?requested=${encodeURIComponent(path)}`}
-              aria-current={requestedPath === path ? 'page' : undefined}
+              aria-current={isNavActive(path) ? 'page' : undefined}
               className={`inline-flex min-h-10 items-center rounded-md border px-3 text-sm ${
-                requestedPath === path ? 'bg-muted font-medium' : 'hover:bg-muted'
+                isNavActive(path) ? 'bg-muted font-medium' : 'hover:bg-muted'
               }`}
             >
               {label}
@@ -144,9 +199,9 @@ export function OfflineApp() {
         </nav>
       ) : null}
 
-      {requestedPath && !OFFLINE_ROUTES.some(({ path }) => path === requestedPath) ? (
+      {route.type === 'unsupported' ? (
         <p className="rounded-lg border p-4 text-sm text-muted-foreground" role="status">
-          The requested page ({requestedPath}) is not available in the offline workspace. Use the offline pages above or retry when connected.
+          The requested page ({route.path}) is not available in the offline workspace. Use the offline pages above or retry when connected.
         </p>
       ) : null}
 
@@ -177,10 +232,7 @@ export function OfflineApp() {
                   className="min-h-11 w-full rounded-md border px-4 text-left text-sm hover:bg-muted"
                   onClick={() => {
                     try {
-                      persistOfflineTenantSelection(
-                        identity.userId,
-                        tenantId,
-                      );
+                      persistOfflineTenantSelection(identity.userId, tenantId);
                     } catch (cause: unknown) {
                       console.error('Could not save the selected offline tenant:', cause);
                     }
@@ -204,25 +256,62 @@ export function OfflineApp() {
           fallback={<p role="status">Opening your local database…</p>}
         >
           <OfflineSyncStatus />
-          {requestedPath === '/expenses' ? <OfflineExpenses tenantId={identity.tenantId} /> : null}
-          {requestedPath === '/items' ? <OfflineItems tenantId={identity.tenantId} /> : null}
-          {requestedPath === '/parties' ? <OfflineParties tenantId={identity.tenantId} /> : null}
-          {requestedPath === '/sales' ? <OfflineSales tenantId={identity.tenantId} /> : null}
-          {requestedPath === '/sales/new' ? (
+          {route.type === 'expenses' ? <OfflineExpenses tenantId={identity.tenantId} /> : null}
+          {route.type === 'items' ? (
+            <OfflineItems
+              tenantId={identity.tenantId}
+              onSelectItem={(id) => navigateTo(`/items/${id}`)}
+            />
+          ) : null}
+          {route.type === 'item-detail' ? (
+            <OfflineItemDetail
+              tenantId={identity.tenantId}
+              itemId={route.id}
+              onBack={() => navigateTo('/items')}
+            />
+          ) : null}
+          {route.type === 'parties' ? (
+            <OfflineParties
+              tenantId={identity.tenantId}
+              onSelectParty={(id) => navigateTo(`/parties/${id}`)}
+            />
+          ) : null}
+          {route.type === 'party-detail' ? (
+            <OfflinePartyDetail
+              tenantId={identity.tenantId}
+              partyId={route.id}
+              onBack={() => navigateTo('/parties')}
+              onSelectInvoice={(id) => navigateTo(`/sales/${id}`)}
+            />
+          ) : null}
+          {route.type === 'sales' ? (
+            <OfflineSales
+              tenantId={identity.tenantId}
+              onSelectInvoice={(id) => navigateTo(`/sales/${id}`)}
+            />
+          ) : null}
+          {route.type === 'sale-detail' ? (
+            <OfflineInvoiceDetail
+              tenantId={identity.tenantId}
+              invoiceId={route.id}
+              onBack={() => navigateTo('/sales')}
+            />
+          ) : null}
+          {route.type === 'sale-new' ? (
             <InvoiceForm itemLookupTenantId={identity.tenantId} />
           ) : null}
-          {requestedPath === '/offline-workspace' || !requestedPath ? (
-            <OfflineWorkspace tenantId={identity.tenantId} />
-          ) : null}
-          {requestedPath && !OFFLINE_ROUTES.some(({ path }) => path === requestedPath) ? (
-            <OfflineWorkspace tenantId={identity.tenantId} />
+          {route.type === 'workspace' || route.type === 'unsupported' ? (
+            <OfflineWorkspace
+              tenantId={identity.tenantId}
+              onNavigate={(path) => navigateTo(path)}
+            />
           ) : null}
         </OfflinePowerSyncProvider>
       ) : null}
 
       {requestedPath ? (
         <a
-          className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-muted"
+          className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-muted print:hidden"
           href={requestedPath}
         >
           Retry requested page
