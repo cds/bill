@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bill-offline-shell-v2';
+const CACHE_NAME = 'bill-offline-shell-v3';
 const SHELL_ASSETS = [
   '/offline.html',
   '/offline-shell.css',
@@ -37,6 +37,8 @@ async function cacheOfflineApp(cache) {
     pending.clear();
     await Promise.all(batch.map(async (url) => {
       cached.add(url);
+      if (await cache.match(url)) return;
+
       const assetResponse = await fetch(url);
       if (!assetResponse.ok) {
         throw new Error(`Failed to cache an offline app asset (${assetResponse.status}).`);
@@ -93,8 +95,19 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
+    const navigationResponse = fetch(request);
+    event.waitUntil(
+      navigationResponse
+        .then((response) => {
+          if (!response.ok) return;
+          return caches.open(CACHE_NAME).then(cacheOfflineApp);
+        })
+        .catch((error) => {
+          console.error('Failed to refresh the offline app cache:', error);
+        }),
+    );
     event.respondWith(
-      fetch(request).catch(async () => {
+      navigationResponse.catch(async () => {
         const cache = await caches.open(CACHE_NAME);
         if (requestUrl.pathname === '/offline-app') {
           const offlineApp = await cache.match('/offline-app', { ignoreSearch: true });

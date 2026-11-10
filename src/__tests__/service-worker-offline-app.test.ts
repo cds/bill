@@ -46,12 +46,14 @@ function createServiceWorkerHarness() {
     keys: vi.fn(async () => []),
     delete: vi.fn(async () => true),
   };
+  let offlineAppHtml =
+    '<html><script src="/_next/static/chunks/offline-app.js"></script><link href="/_next/static/chunks/offline-app.css"></html>';
   const fetch = vi.fn(async (input: string | Request) => {
     if (!online) throw new TypeError('Network unavailable');
     const url = cacheKey(input);
     if (url.pathname === '/offline-app') {
       return new Response(
-        '<html><script src="/_next/static/chunks/offline-app.js"></script><link href="/_next/static/chunks/offline-app.css"></html>',
+        offlineAppHtml,
         { headers: { 'Content-Type': 'text/html', Vary: 'RSC, Accept', 'Set-Cookie': 'private=value' } },
       );
     }
@@ -88,6 +90,9 @@ function createServiceWorkerHarness() {
     listeners,
     setOnline(value: boolean) {
       online = value;
+    },
+    setOfflineAppHtml(html: string) {
+      offlineAppHtml = html;
     },
   };
 }
@@ -137,6 +142,7 @@ describe('offline service worker entry', () => {
         mode: 'navigate',
         url: `${origin}/sales/new?token=private`,
       },
+      waitUntil() {},
       respondWith(promise: Promise<Response>) {
         responsePromise = promise;
       },
@@ -156,11 +162,50 @@ describe('offline service worker entry', () => {
         mode: 'navigate',
         url: `${origin}/offline-app?requested=%2Fsales%2Fnew`,
       },
+      waitUntil() {},
       respondWith(promise: Promise<Response>) {
         responsePromise = promise;
       },
     });
     const offlineAppResponse = await responsePromise;
     expect(await offlineAppResponse?.text()).toContain('offline-app.js');
+  });
+
+  it('refreshes the cached offline app after a successful online navigation', async () => {
+    let installPromise: Promise<void> | undefined;
+    harness.listeners.get('install')?.({
+      waitUntil(promise: Promise<void>) {
+        installPromise = promise;
+      },
+    });
+    await installPromise;
+
+    harness.setOfflineAppHtml(
+      '<html><script src="/_next/static/chunks/offline-app-v2.js"></script></html>',
+    );
+
+    let responsePromise: Promise<Response> | undefined;
+    let refreshPromise: Promise<void> | undefined;
+    harness.listeners.get('fetch')?.({
+      request: {
+        method: 'GET',
+        mode: 'navigate',
+        url: `${origin}/expenses`,
+      },
+      waitUntil(promise: Promise<void>) {
+        refreshPromise = promise;
+      },
+      respondWith(promise: Promise<Response>) {
+        responsePromise = promise;
+      },
+    });
+
+    await responsePromise;
+    await refreshPromise;
+
+    expect(await harness.entries.get(`${origin}/offline-app`)?.text())
+      .toContain('offline-app-v2.js');
+    expect(harness.entries.has(`${origin}/_next/static/chunks/offline-app-v2.js`))
+      .toBe(true);
   });
 });
