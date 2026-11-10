@@ -71,32 +71,38 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
     const processedPartyIds = new Set<string>();
 
     for (const change of batch.crud) {
-      if (change.table === 'expenses') {
-        await this.uploadExpense(database, change);
-        continue;
-      }
-      if (change.table === 'offline_invoices') {
-        await this.uploadInvoice(database, change);
-        continue;
-      }
-      if (change.table === 'offline_parties' || change.table === 'parties') {
-        if (processedPartyIds.has(change.id)) {
-          continue;
+        // Process each change individually; errors are caught so the batch can complete
+        try {
+          if (change.table === 'expenses') {
+            await this.uploadExpense(database, change);
+            continue;
+          }
+          if (change.table === 'offline_invoices') {
+            await this.uploadInvoice(database, change);
+            continue;
+          }
+          if (change.table === 'offline_parties' || change.table === 'parties') {
+            if (processedPartyIds.has(change.id)) {
+              continue;
+            }
+            await this.uploadParty(database, change);
+            processedPartyIds.add(change.id);
+            continue;
+          }
+          if (change.table === 'offline_items' || change.table === 'items') {
+            if (processedItemIds.has(change.id)) {
+              continue;
+            }
+            await this.uploadItem(database, change);
+            processedItemIds.add(change.id);
+            continue;
+          }
+          throw new Error(`Unsupported PowerSync upload table: ${change.table}`);
+        } catch (e) {
+          console.error('PowerSync upload error:', e);
+          // Continue processing remaining changes
         }
-        await this.uploadParty(database, change);
-        processedPartyIds.add(change.id);
-        continue;
       }
-      if (change.table === 'offline_items' || change.table === 'items') {
-        if (processedItemIds.has(change.id)) {
-          continue;
-        }
-        await this.uploadItem(database, change);
-        processedItemIds.add(change.id);
-        continue;
-      }
-      throw new Error(`Unsupported PowerSync upload table: ${change.table}`);
-    }
 
     await batch.complete();
   }

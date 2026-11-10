@@ -48,6 +48,11 @@ export function OfflineSyncStatus() {
     setRequestError(null);
     setIsRequestingSync(true);
     try {
+      // Ensure any existing connection is reset before starting a new sync
+      // This avoids a stale connection that might keep isSyncing true.
+      if (database.isConnected?.()) {
+        await database.disconnect();
+      }
       await database.connect(new SupabasePowerSyncConnector());
     } catch (cause: unknown) {
       const message = cause instanceof Error ? cause.message : String(cause);
