@@ -65,12 +65,10 @@ function LocalPartySearch({
      ORDER BY name`,
     [tenantId],
     {
-      streams: [
-        {
-          name: 'current_tenant_parties',
-          parameters: { tenant_id: tenantId },
-        },
-      ],
+      streams: [{
+        name: 'tenant_data',
+        parameters: { tenant_id: tenantId },
+      }],
     },
   );
   const [open, setOpen] = React.useState(false);

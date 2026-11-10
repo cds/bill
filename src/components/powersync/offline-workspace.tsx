@@ -34,12 +34,10 @@ export function OfflineWorkspace({ tenantId }: { tenantId: string }) {
      ORDER BY name`,
     [tenantId],
     {
-      streams: [
-        {
-          name: 'current_tenant_items',
-          parameters: { tenant_id: tenantId },
-        },
-      ],
+      streams: [{
+        name: 'tenant_data',
+        parameters: { tenant_id: tenantId },
+      }],
     },
   );
   const parties = useQuery<PartyRow>(
@@ -49,12 +47,10 @@ export function OfflineWorkspace({ tenantId }: { tenantId: string }) {
      ORDER BY name`,
     [tenantId],
     {
-      streams: [
-        {
-          name: 'current_tenant_parties',
-          parameters: { tenant_id: tenantId },
-        },
-      ],
+      streams: [{
+        name: 'tenant_data',
+        parameters: { tenant_id: tenantId },
+      }],
     },
   );
 

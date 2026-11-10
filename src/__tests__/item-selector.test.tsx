@@ -114,7 +114,7 @@ describe('PowerSync item selector', () => {
       ['tenant-123'],
       {
         streams: [{
-          name: 'current_tenant_items',
+          name: 'tenant_data',
           parameters: { tenant_id: 'tenant-123' },
         }],
       },

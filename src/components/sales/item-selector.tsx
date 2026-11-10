@@ -50,12 +50,10 @@ function PowerSyncItemSelector({ tenantId, ...props }: ItemSelectorProps & { ten
      ORDER BY name`,
     [tenantId],
     {
-      streams: [
-        {
-          name: 'current_tenant_items',
-          parameters: { tenant_id: tenantId },
-        },
-      ],
+      streams: [{
+        name: 'tenant_data',
+        parameters: { tenant_id: tenantId },
+      }],
     },
   );
   const items = result.data.map((item) => ({

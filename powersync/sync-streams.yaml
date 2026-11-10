@@ -1,0 +1,42 @@
+config:
+  edition: 3
+
+streams:
+  tenant_data:
+    queries:
+      - |
+        SELECT items.*
+        FROM items
+        WHERE items.tenant_id = subscription.parameter('tenant_id')
+          AND items.deleted_at IS NULL
+          AND (
+            items.tenant_id IN (
+              SELECT tenant_id
+              FROM tenant_members
+              WHERE user_id = auth.user_id()
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM users
+              WHERE id = auth.user_id()
+                AND system_role = 'super_admin'
+            )
+          )
+      - |
+        SELECT parties.*
+        FROM parties
+        WHERE parties.tenant_id = subscription.parameter('tenant_id')
+          AND parties.deleted_at IS NULL
+          AND (
+            parties.tenant_id IN (
+              SELECT tenant_id
+              FROM tenant_members
+              WHERE user_id = auth.user_id()
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM users
+              WHERE id = auth.user_id()
+                AND system_role = 'super_admin'
+            )
+          )

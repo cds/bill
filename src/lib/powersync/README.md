@@ -6,7 +6,9 @@ PowerSync is mounted on `/offline-workspace`, the new-sale flow, and the expense
 
 Set `NEXT_PUBLIC_POWERSYNC_URL` to the PowerSync service endpoint in the local development environment. The existing `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are used by the browser Supabase client. Do not put database credentials, PowerSync administrative credentials, or Supabase service-role/JWT signing secrets in `NEXT_PUBLIC_*` variables.
 
-The client subscribes to `current_tenant_items` and `current_tenant_parties` with the provided `tenant_id`. Deploy both matching, membership-guarded streams in the PowerSync development instance. Each stream must filter its table by the requested tenant, require the authenticated user to be a member of that tenant, and exclude rows with `deleted_at IS NOT NULL`. Do not rely on Supabase RLS to apply these PowerSync stream filters.
+The dashboard-ready config is in [`powersync/sync-streams.yaml`](../../../powersync/sync-streams.yaml). Deploy it in the production PowerSync Dashboard under **Sync Streams**. The app subscribes to `tenant_data` with the selected `tenant_id`; the stream itself independently checks that the signed-in user is a member of that tenant or has the trusted `users.system_role = 'super_admin'` role, and excludes soft-deleted records. This keeps super-admin access limited to the currently selected tenant rather than syncing all tenants. Do not rely on Supabase RLS to apply PowerSync stream filters.
+
+The app's current offline coverage is limited to items, parties, expense creation, and new invoice creation. Never trust a client-selected tenant ID by itself. The current stream is read-only; offline writes use server-validated upload endpoints rather than PowerSync table CRUD uploads.
 
 The connector reads the current session from the existing Supabase browser Auth client. It refreshes tokens that are expired, have unknown expiry, or expire within 60 seconds; signed-out users return no credentials, while failed refreshes raise an explicit error. It returns only the Supabase access token and PowerSync endpoint needed by the SDK.
 
@@ -46,7 +48,12 @@ export function PowerSyncItemsCheck({ tenantId }: { tenantId: string }) {
   const { data, isLoading, error } = useQuery(
     'SELECT id, name, tenant_id FROM items WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY name',
     [tenantId],
-    { streams: [{ name: 'current_tenant_items', parameters: { tenant_id: tenantId } }] },
+    {
+      streams: [{
+        name: 'tenant_data',
+        parameters: { tenant_id: tenantId },
+      }],
+    },
   );
 
   if (error) return <p role="alert">{error.message}</p>;
