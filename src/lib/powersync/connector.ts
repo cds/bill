@@ -97,21 +97,38 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
     }
 
     const expenseData = change.opData;
-    const response = await fetch('/api/offline/expenses', {
-      method: 'POST',
-      credentials: 'same-origin',
-      redirect: 'manual',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: change.id,
-        tenant_id: tenantId,
-        date: expenseData?.date,
-        category: expenseData?.category,
-        amount: Number(expenseData?.amount),
-        payment_mode: expenseData?.payment_mode,
-        notes: expenseData?.notes ?? null,
-      }),
-    });
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      throw new Error(
+        'Expense remains saved on this device. Sync will retry when the connection returns.',
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await fetch('/api/offline/expenses', {
+        method: 'POST',
+        credentials: 'same-origin',
+        redirect: 'manual',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: change.id,
+          tenant_id: tenantId,
+          date: expenseData?.date,
+          category: expenseData?.category,
+          amount: Number(expenseData?.amount),
+          payment_mode: expenseData?.payment_mode,
+          notes: expenseData?.notes ?? null,
+        }),
+      });
+    } catch (cause: unknown) {
+      if (cause instanceof TypeError) {
+        throw new Error(
+          'Expense remains saved on this device. Sync will retry when the connection returns.',
+          { cause },
+        );
+      }
+      throw cause;
+    }
 
     if (response.ok) {
       await setExpenseSyncStatus(database, change.id, tenantId, 'synced', null);

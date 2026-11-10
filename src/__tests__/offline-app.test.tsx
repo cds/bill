@@ -28,6 +28,12 @@ vi.mock('@/components/powersync/offline-workspace', () => ({
   ),
 }));
 
+vi.mock('@/components/expenses/offline-expenses', () => ({
+  OfflineExpenses: ({ tenantId }: { tenantId: string }) => (
+    <p>Local expenses tenant: {tenantId}</p>
+  ),
+}));
+
 describe('offline app entry', () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -60,6 +66,19 @@ describe('offline app entry', () => {
 
     expect(container.textContent).toContain('Workspace tenant: tenant-a');
     expect(container.querySelector('[data-tenant-id="tenant-a"]')).not.toBeNull();
+  });
+
+  it('opens local expense entry when the failed route was /expenses', async () => {
+    window.history.replaceState(null, '', '/offline-app?requested=%2Fexpenses');
+    window.localStorage.setItem(getOfflineTenantStorageKey('user-a'), 'tenant-a');
+
+    await act(async () => {
+      root.render(<OfflineApp />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container.textContent).toContain('Local expenses tenant: tenant-a');
+    expect(container.textContent).not.toContain('needs an internet connection');
   });
 
   it('does not open local data without a signed-in session', async () => {

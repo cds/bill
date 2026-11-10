@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { ConnectionStatus } from '@/components/layout/connection-status';
+import { OfflineExpenses } from '@/components/expenses/offline-expenses';
 import { OfflineWorkspace } from '@/components/powersync/offline-workspace';
 import { OfflinePowerSyncProvider } from '@/lib/powersync/offline-provider';
 import { createClient } from '@/lib/supabase/client';
@@ -19,7 +20,8 @@ function getRequestedPath() {
   if (!requested) return null;
 
   const url = new URL(requested, window.location.origin);
-  return url.origin === window.location.origin ? url.pathname : null;
+  if (url.origin !== window.location.origin) return null;
+  return url.pathname === '/' ? '/' : url.pathname.replace(/\/+$/, '');
 }
 
 function subscribeToLocation(callback: () => void) {
@@ -82,7 +84,7 @@ export function OfflineApp() {
         <ConnectionStatus />
       </header>
 
-      {requestedPath && requestedPath !== '/offline-workspace' ? (
+      {requestedPath && !['/expenses', '/offline-workspace'].includes(requestedPath) ? (
         <p className="rounded-lg border p-4 text-sm text-muted-foreground" role="status">
           The requested page ({requestedPath}) needs an internet connection. Cached items and parties are available below.
         </p>
@@ -110,6 +112,9 @@ export function OfflineApp() {
           tenantId={identity.tenantId}
           fallback={<p role="status">Opening your local database…</p>}
         >
+          {requestedPath === '/expenses' ? (
+            <OfflineExpenses tenantId={identity.tenantId} />
+          ) : null}
           <OfflineWorkspace tenantId={identity.tenantId} />
         </OfflinePowerSyncProvider>
       ) : null}

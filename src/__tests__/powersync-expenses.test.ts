@@ -63,6 +63,7 @@ function makeExpenseCrud() {
 describe('PowerSync offline expenses', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
   });
 
   afterEach(() => {
@@ -156,7 +157,8 @@ describe('PowerSync offline expenses', () => {
     vi.stubGlobal('fetch', request);
     const connector = new SupabasePowerSyncConnector();
 
-    await expect(connector.uploadData(database)).rejects.toThrow('connection closed');
+    await expect(connector.uploadData(database))
+      .rejects.toThrow('Expense remains saved on this device');
     expect(complete).not.toHaveBeenCalled();
 
     await connector.uploadData(database);
@@ -167,6 +169,17 @@ describe('PowerSync offline expenses', () => {
     );
     expect(JSON.parse(request.mock.calls[1][1].body).id).toBe(EXPENSE_ID);
     expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it('keeps an offline expense queued with a clear message until connectivity returns', async () => {
+    const { database, complete } = makeDatabase({ crud: [makeExpenseCrud()] });
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+
+    await expect(new SupabasePowerSyncConnector().uploadData(database))
+      .rejects.toThrow('Expense remains saved on this device');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it('records a permanent server rejection and completes the batch', async () => {
