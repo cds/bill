@@ -6,12 +6,17 @@ import { OfflineExpenses } from '@/components/expenses/offline-expenses';
 import { OfflineWorkspace } from '@/components/powersync/offline-workspace';
 import { OfflinePowerSyncProvider } from '@/lib/powersync/offline-provider';
 import { createClient } from '@/lib/supabase/client';
-import { getOfflineTenantStorageKey } from '@/lib/powersync/offline-storage';
+import {
+  discoverOfflineTenants,
+  getOfflineTenantStorageKey,
+  persistOfflineTenantSelection,
+} from '@/lib/powersync/offline-storage';
 
 type OfflineIdentity =
   | { status: 'loading' }
   | { status: 'signed-out' }
   | { status: 'tenant-missing' }
+  | { status: 'tenant-choice'; userId: string; tenantIds: string[] }
   | { status: 'ready'; tenantId: string }
   | { status: 'error'; message: string };
 
@@ -50,9 +55,33 @@ export function OfflineApp() {
           return;
         }
 
-        const tenantId = window.localStorage.getItem(
-          getOfflineTenantStorageKey(data.session.user.id),
+        const storageKey = getOfflineTenantStorageKey(data.session.user.id);
+        const savedTenantId = window.localStorage.getItem(
+          storageKey,
         );
+
+        let tenantId = savedTenantId;
+        if (!tenantId) {
+          const discoveredTenants = await discoverOfflineTenants(data.session.user.id);
+          if (discoveredTenants?.length === 1) {
+            tenantId = discoveredTenants[0];
+            try {
+              persistOfflineTenantSelection(data.session.user.id, tenantId);
+            } catch (cause: unknown) {
+              console.error('Could not restore the offline tenant pointer:', cause);
+            }
+          } else if (discoveredTenants && discoveredTenants.length > 1) {
+            if (active) {
+              setIdentity({
+                status: 'tenant-choice',
+                userId: data.session.user.id,
+                tenantIds: discoveredTenants,
+              });
+            }
+            return;
+          }
+        }
+
         if (active) {
           setIdentity(tenantId
             ? { status: 'ready', tenantId }
@@ -100,8 +129,39 @@ export function OfflineApp() {
       ) : null}
       {identity.status === 'tenant-missing' ? (
         <p role="alert">
-          This device has no saved tenant selection. Connect to the internet and open the workspace once to prepare offline access.
+          No local PowerSync database was found for this signed-in account on this device. Connect to the internet, open the workspace, and wait for local data to sync before using it offline.
         </p>
+      ) : null}
+      {identity.status === 'tenant-choice' ? (
+        <section className="space-y-3" aria-labelledby="offline-tenant-heading">
+          <h2 id="offline-tenant-heading" className="font-medium">Choose a local workspace</h2>
+          <p className="text-sm text-muted-foreground">
+            More than one tenant database belongs to this signed-in account on this device.
+          </p>
+          <ul className="space-y-2">
+            {identity.tenantIds.map((tenantId) => (
+              <li key={tenantId}>
+                <button
+                  type="button"
+                  className="min-h-11 w-full rounded-md border px-4 text-left text-sm hover:bg-muted"
+                  onClick={() => {
+                    try {
+                      persistOfflineTenantSelection(
+                        identity.userId,
+                        tenantId,
+                      );
+                    } catch (cause: unknown) {
+                      console.error('Could not save the selected offline tenant:', cause);
+                    }
+                    setIdentity({ status: 'ready', tenantId });
+                  }}
+                >
+                  {tenantId}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
       {identity.status === 'error' ? (
         <p role="alert">Could not open offline access: {identity.message}</p>

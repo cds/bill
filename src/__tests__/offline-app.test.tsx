@@ -53,6 +53,7 @@ describe('offline app entry', () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
@@ -96,14 +97,58 @@ describe('offline app entry', () => {
     expect(container.textContent).not.toContain('Workspace tenant:');
   });
 
-  it('explains that tenant context must be prepared online once', async () => {
+  it('recovers the tenant from the signed-in user’s existing local database', async () => {
+    vi.stubGlobal('indexedDB', {
+      databases: vi.fn().mockResolvedValue([
+        { name: 'bill-user-a-11111111-1111-4111-8111-111111111111.db' },
+        { name: 'bill-user-b-22222222-2222-4222-8222-222222222222.db' },
+      ]),
+    });
+
     await act(async () => {
       root.render(<OfflineApp />);
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(container.textContent).toContain('no saved tenant selection');
+    expect(container.textContent).toContain(
+      'Workspace tenant: 11111111-1111-4111-8111-111111111111',
+    );
+    expect(window.localStorage.getItem(getOfflineTenantStorageKey('user-a')))
+      .toBe('11111111-1111-4111-8111-111111111111');
+  });
+
+  it('explains how to prepare local data when no tenant database exists', async () => {
+    await act(async () => {
+      root.render(<OfflineApp />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container.textContent).toContain('No local PowerSync database was found');
     expect(container.textContent).not.toContain('Workspace tenant:');
+  });
+
+  it('asks the user to choose when multiple local tenant databases exist', async () => {
+    vi.stubGlobal('indexedDB', {
+      databases: vi.fn().mockResolvedValue([
+        { name: 'bill-user-a-11111111-1111-4111-8111-111111111111.db' },
+        { name: 'bill-user-a-22222222-2222-4222-8222-222222222222.db' },
+      ]),
+    });
+
+    await act(async () => {
+      root.render(<OfflineApp />);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container.textContent).toContain('Choose a local workspace');
+    expect(container.textContent).not.toContain('Workspace tenant:');
+    const buttons = container.querySelectorAll('button');
+    await act(async () => buttons[1].click());
+    expect(container.textContent).toContain(
+      'Workspace tenant: 22222222-2222-4222-8222-222222222222',
+    );
+    expect(window.localStorage.getItem(getOfflineTenantStorageKey('user-a')))
+      .toBe('22222222-2222-4222-8222-222222222222');
   });
 
   it('does not turn a requested external URL into a retry link', async () => {
