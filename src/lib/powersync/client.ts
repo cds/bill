@@ -47,7 +47,16 @@ export async function getPowerSyncDatabase(tenantId: string) {
         },
       });
 
-      await database.connect(new SupabasePowerSyncConnector());
+      // Initialize the local database first so it is usable even when
+      // the remote sync connection fails (e.g. auth errors, offline).
+      await database.init();
+
+      // Start remote sync in the background — errors are surfaced via
+      // the database's status listener, not by rejecting this promise.
+      database.connect(new SupabasePowerSyncConnector()).catch((err) => {
+        console.warn('[PowerSync] Background sync connection failed:', err);
+      });
+
       return database;
     })();
 
