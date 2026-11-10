@@ -50,7 +50,7 @@ export function OfflineSyncStatus() {
     try {
       // Ensure any existing connection is reset before starting a new sync
       // This avoids a stale connection that might keep isSyncing true.
-      if (database.isConnected?.()) {
+      if (status.connected) {
         await database.disconnect();
       }
       await database.connect(new SupabasePowerSyncConnector());

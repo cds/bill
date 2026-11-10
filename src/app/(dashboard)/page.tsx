@@ -173,6 +173,8 @@ export default async function DashboardPage() {
           icon={AlertTriangle}
           iconClassName="bg-amber-100 text-amber-600"
         />
+      </div>
+
       {/* Sync Controls */}
       <OfflineSyncStatus />
       <Card>
