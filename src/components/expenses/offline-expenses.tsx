@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@powersync/react';
 import { ExpenseForm } from './expense-form';
 import { Button } from '@/components/ui/button';
+import { SyncBadge } from '@/components/powersync/sync-badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 type OfflineExpense = {
@@ -87,33 +88,39 @@ export function OfflineExpenses({ tenantId }: { tenantId: string }) {
       ) : null}
 
       {allRows.length > 0 ? (
-        <ul className="divide-y rounded-lg border">
+        <ul className="divide-y rounded-lg border overflow-hidden">
           {allRows.map((expense) => (
-            <li key={expense.id} className="space-y-2 p-4">
+            <li
+              key={expense.id}
+              className={`space-y-2 p-4 transition-colors ${
+                expense.sync_status === 'pending'
+                  ? 'border-l-4 border-l-amber-500 bg-amber-50/25 dark:bg-amber-950/20'
+                  : expense.sync_status === 'rejected'
+                    ? 'border-l-4 border-l-destructive bg-destructive/5'
+                    : ''
+              }`}
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">{expense.category}</p>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{expense.category}</p>
+                    <SyncBadge
+                      status={expense.sync_status}
+                      label={
+                        expense.sync_status === 'pending'
+                          ? 'Pending sync'
+                          : expense.sync_status === 'rejected'
+                            ? 'Rejected'
+                            : 'Synced'
+                      }
+                    />
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     {formatDate(expense.date)} · {expense.payment_mode}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-medium">{formatCurrency(expense.amount)}</p>
-                  <p
-                    className={
-                      expense.sync_status === 'rejected'
-                        ? 'text-sm text-destructive'
-                        : expense.sync_status === 'pending'
-                          ? 'text-sm text-amber-700 dark:text-amber-400'
-                          : 'text-sm text-green-700 dark:text-green-400'
-                    }
-                  >
-                    {expense.sync_status === 'pending'
-                      ? 'Pending sync'
-                      : expense.sync_status === 'rejected'
-                        ? 'Rejected'
-                        : 'Synced'}
-                  </p>
+                  <p className="font-semibold text-base">{formatCurrency(expense.amount)}</p>
                 </div>
               </div>
               {expense.notes ? (

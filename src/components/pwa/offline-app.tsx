@@ -6,10 +6,13 @@ import { OfflineExpenses } from '@/components/expenses/offline-expenses';
 import { InvoiceForm } from '@/components/sales/invoice-form';
 import { OfflineItems } from '@/components/items/offline-items';
 import { OfflineItemDetail } from '@/components/items/offline-item-detail';
+import { OfflineItemForm } from '@/components/items/offline-item-form';
 import { OfflineParties } from '@/components/parties/offline-parties';
 import { OfflinePartyDetail } from '@/components/parties/offline-party-detail';
+import { OfflinePartyForm } from '@/components/parties/offline-party-form';
 import { OfflineSales } from '@/components/sales/offline-sales';
 import { OfflineInvoiceDetail } from '@/components/sales/offline-invoice-detail';
+import { OfflineReports } from '@/components/reports/offline-reports';
 import { OfflineSyncStatus } from '@/components/powersync/offline-sync-status';
 import { OfflineWorkspace } from '@/components/powersync/offline-workspace';
 import { OfflinePowerSyncProvider } from '@/lib/powersync/offline-provider';
@@ -35,6 +38,7 @@ const OFFLINE_ROUTES = [
   { path: '/sales', label: 'Sales' },
   { path: '/sales/new', label: 'New sale' },
   { path: '/expenses', label: 'Expenses' },
+  { path: '/reports', label: 'Reports' },
 ] as const;
 
 function getRequestedPath() {
@@ -62,16 +66,24 @@ function parseRequestedRoute(path: string | null) {
   if (saleMatch && saleMatch[1] !== 'new') {
     return { type: 'sale-detail' as const, id: decodeURIComponent(saleMatch[1]) };
   }
+  if (path === '/items/new') return { type: 'item-new' as const };
   if (path === '/items') return { type: 'items' as const };
   const itemMatch = path.match(/^\/items\/([^/]+)$/);
-  if (itemMatch) {
+  if (itemMatch && itemMatch[1] !== 'new') {
     return { type: 'item-detail' as const, id: decodeURIComponent(itemMatch[1]) };
   }
+  if (path === '/parties/new') return { type: 'party-new' as const };
   if (path === '/parties') return { type: 'parties' as const };
   const partyMatch = path.match(/^\/parties\/([^/]+)$/);
-  if (partyMatch) {
+  if (partyMatch && partyMatch[1] !== 'new') {
     return { type: 'party-detail' as const, id: decodeURIComponent(partyMatch[1]) };
   }
+  if (path === '/reports') return { type: 'reports' as const, sub: 'hub' as const };
+  if (path === '/reports/sales') return { type: 'reports' as const, sub: 'sales' as const };
+  if (path === '/reports/stock') return { type: 'reports' as const, sub: 'stock' as const };
+  if (path === '/reports/parties') return { type: 'reports' as const, sub: 'parties' as const };
+  if (path === '/reports/expenses') return { type: 'reports' as const, sub: 'expenses' as const };
+
   return { type: 'unsupported' as const, path };
 }
 
@@ -169,6 +181,9 @@ export function OfflineApp() {
     if (path === '/expenses') {
       return route.type === 'expenses';
     }
+    if (path === '/reports') {
+      return route.type === 'reports';
+    }
     return false;
   };
 
@@ -263,6 +278,13 @@ export function OfflineApp() {
               onSelectItem={(id) => navigateTo(`/items/${id}`)}
             />
           ) : null}
+          {route.type === 'item-new' ? (
+            <OfflineItemForm
+              tenantId={identity.tenantId}
+              onSaved={(id) => navigateTo(`/items/${id}`)}
+              onCancel={() => navigateTo('/items')}
+            />
+          ) : null}
           {route.type === 'item-detail' ? (
             <OfflineItemDetail
               tenantId={identity.tenantId}
@@ -274,6 +296,13 @@ export function OfflineApp() {
             <OfflineParties
               tenantId={identity.tenantId}
               onSelectParty={(id) => navigateTo(`/parties/${id}`)}
+            />
+          ) : null}
+          {route.type === 'party-new' ? (
+            <OfflinePartyForm
+              tenantId={identity.tenantId}
+              onSaved={(id) => navigateTo(`/parties/${id}`)}
+              onCancel={() => navigateTo('/parties')}
             />
           ) : null}
           {route.type === 'party-detail' ? (
@@ -299,6 +328,13 @@ export function OfflineApp() {
           ) : null}
           {route.type === 'sale-new' ? (
             <InvoiceForm itemLookupTenantId={identity.tenantId} />
+          ) : null}
+          {route.type === 'reports' ? (
+            <OfflineReports
+              tenantId={identity.tenantId}
+              reportType={route.sub}
+              onNavigate={(path) => navigateTo(path)}
+            />
           ) : null}
           {route.type === 'workspace' || route.type === 'unsupported' ? (
             <OfflineWorkspace

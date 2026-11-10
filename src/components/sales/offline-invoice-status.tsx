@@ -6,6 +6,7 @@ import { useQuery, usePowerSyncOrNull } from '@powersync/react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SyncBadge } from '@/components/powersync/sync-badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   retryOfflineInvoice,
@@ -75,16 +76,20 @@ export function OfflineInvoiceStatusList({ tenantId }: { tenantId: string }) {
         ) : null}
         {query.isLoading ? <p role="status">Loading local invoice statuses...</p> : null}
         {invoices.map((invoice) => (
-          <div key={invoice.id} className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            key={invoice.id}
+            className={`flex flex-col gap-2 rounded-md border p-3.5 sm:flex-row sm:items-center sm:justify-between transition-colors ${
+              invoice.sync_status === 'pending'
+                ? 'border-l-4 border-l-amber-500 bg-amber-50/30 dark:bg-amber-950/20'
+                : invoice.sync_status === 'rejected'
+                  ? 'border-l-4 border-l-destructive bg-destructive/5'
+                  : ''
+            }`}
+          >
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{invoice.party_name}</span>
-                {invoice.sync_status === 'pending' ? (
-                  <Badge variant="secondary">Pending sync</Badge>
-                ) : null}
-                {invoice.sync_status === 'rejected' ? (
-                  <Badge variant="destructive">Rejected</Badge>
-                ) : null}
+                <span className="font-semibold text-sm">{invoice.party_name}</span>
+                <SyncBadge status={invoice.sync_status} />
                 {invoice.sync_status === 'synced' && invoice.server_invoice_number !== null ? (
                   <Badge variant="outline">Invoice #{invoice.server_invoice_number}</Badge>
                 ) : null}

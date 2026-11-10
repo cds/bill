@@ -145,6 +145,57 @@ const invoice_sync_status = Table.createLocalOnly(
   { indexes: { by_tenant: ['tenant_id'] } },
 );
 
+const offline_parties = Table.createInsertOnly(
+  {
+    tenant_id: column.text,
+    name: column.text,
+    billing_name: column.text,
+    phone: column.text,
+    address: column.text,
+    type: column.text,
+    created_at: column.text,
+  },
+  { indexes: { by_tenant: ['tenant_id'] } },
+);
+
+const party_sync_status = Table.createLocalOnly(
+  {
+    tenant_id: column.text,
+    status: column.text,
+    error: column.text,
+    server_party_id: column.text,
+    updated_at: column.text,
+  },
+  { indexes: { by_tenant: ['tenant_id'] } },
+);
+
+const offline_items = Table.createInsertOnly(
+  {
+    tenant_id: column.text,
+    name: column.text,
+    unit: column.text,
+    sale_price: column.real,
+    purchase_price: column.real,
+    opening_stock: column.real,
+    current_stock: column.real,
+    low_stock_threshold: column.real,
+    hsn_code: column.text,
+    created_at: column.text,
+  },
+  { indexes: { by_tenant: ['tenant_id'] } },
+);
+
+const item_sync_status = Table.createLocalOnly(
+  {
+    tenant_id: column.text,
+    status: column.text,
+    error: column.text,
+    server_item_id: column.text,
+    updated_at: column.text,
+  },
+  { indexes: { by_tenant: ['tenant_id'] } },
+);
+
 export const powerSyncSchema = new Schema({
   items,
   parties,
@@ -154,4 +205,8 @@ export const powerSyncSchema = new Schema({
   expense_sync_status,
   offline_invoices,
   invoice_sync_status,
+  offline_parties,
+  party_sync_status,
+  offline_items,
+  item_sync_status,
 });

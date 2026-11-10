@@ -3,6 +3,7 @@
 import { useQuery } from '@powersync/react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { SyncBadge } from '@/components/powersync/sync-badge';
 import { OfflineInvoiceStatusList } from './offline-invoice-status';
 
 type SyncedInvoice = {
@@ -90,6 +91,7 @@ export function OfflineSales({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium">#{invoice.invoice_number}</p>
+                        <SyncBadge status="synced" />
                         {isPaid ? (
                           <Badge variant="outline" className="border-green-300 text-green-700 dark:border-green-700 dark:text-green-400">
                             Paid

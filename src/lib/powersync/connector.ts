@@ -2,6 +2,8 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import { UpdateType, type PowerSyncBackendConnector } from '@powersync/web';
 import { setExpenseSyncStatus } from './expense-writes';
 import { setInvoiceSyncStatus, type NewOfflineInvoiceItem } from './invoice-writes';
+import { setPartySyncStatus } from './party-writes';
+import { setItemSyncStatus } from './item-writes';
 
 const REFRESH_BUFFER_SECONDS = 60;
 
@@ -72,6 +74,14 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
       }
       if (change.table === 'offline_invoices') {
         await this.uploadInvoice(database, change);
+        continue;
+      }
+      if (change.table === 'offline_parties') {
+        await this.uploadParty(database, change);
+        continue;
+      }
+      if (change.table === 'offline_items') {
+        await this.uploadItem(database, change);
         continue;
       }
       throw new Error(`Unsupported PowerSync upload table: ${change.table}`);
@@ -233,6 +243,158 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
       ? responseBody.error
       : `Invoice rejected by server (${response.status}).`;
     await setInvoiceSyncStatus(database, change.id, tenantId, 'rejected', message);
+  }
+
+  private async uploadParty(
+    database: Parameters<PowerSyncBackendConnector['uploadData']>[0],
+    change: NonNullable<Awaited<ReturnType<typeof database.getCrudBatch>>>['crud'][number],
+  ) {
+    const tenantId = change.opData?.tenant_id;
+    if (change.op !== UpdateType.PUT || typeof tenantId !== 'string' || !tenantId) {
+      await setPartySyncStatus(
+        database,
+        change.id,
+        typeof tenantId === 'string' ? tenantId : null,
+        'rejected',
+        'Only new parties with a tenant ID can be synced.',
+      );
+      return;
+    }
+
+    const partyData = change.opData;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      throw new Error(
+        'Party remains saved on this device. Sync will retry when the connection returns.',
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await fetch('/api/offline/parties', {
+        method: 'POST',
+        credentials: 'same-origin',
+        redirect: 'manual',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: change.id,
+          tenant_id: tenantId,
+          name: partyData?.name,
+          billing_name: partyData?.billing_name ?? null,
+          phone: partyData?.phone ?? null,
+          address: partyData?.address ?? null,
+          type: partyData?.type || 'customer',
+        }),
+      });
+    } catch (cause: unknown) {
+      if (cause instanceof TypeError) {
+        throw new Error(
+          'Party remains saved on this device. Sync will retry when the connection returns.',
+          { cause },
+        );
+      }
+      throw cause;
+    }
+
+    if (response.ok) {
+      const responseBody = await response.json().catch(() => null) as { party?: { id?: unknown } } | null;
+      await setPartySyncStatus(
+        database,
+        change.id,
+        tenantId,
+        'synced',
+        null,
+        typeof responseBody?.party?.id === 'string' ? responseBody.party.id : change.id,
+      );
+      return;
+    }
+
+    if (this.isTemporaryFailure(response.status)) {
+      throw new Error(`Temporary party sync failure (${response.status}); PowerSync will retry.`);
+    }
+
+    const responseBody = await response.json().catch(() => null) as { error?: unknown } | null;
+    const message = typeof responseBody?.error === 'string'
+      ? responseBody.error
+      : `Party rejected by server (${response.status}).`;
+    await setPartySyncStatus(database, change.id, tenantId, 'rejected', message);
+  }
+
+  private async uploadItem(
+    database: Parameters<PowerSyncBackendConnector['uploadData']>[0],
+    change: NonNullable<Awaited<ReturnType<typeof database.getCrudBatch>>>['crud'][number],
+  ) {
+    const tenantId = change.opData?.tenant_id;
+    if (change.op !== UpdateType.PUT || typeof tenantId !== 'string' || !tenantId) {
+      await setItemSyncStatus(
+        database,
+        change.id,
+        typeof tenantId === 'string' ? tenantId : null,
+        'rejected',
+        'Only new items with a tenant ID can be synced.',
+      );
+      return;
+    }
+
+    const itemData = change.opData;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      throw new Error(
+        'Product remains saved on this device. Sync will retry when the connection returns.',
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await fetch('/api/offline/items', {
+        method: 'POST',
+        credentials: 'same-origin',
+        redirect: 'manual',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: change.id,
+          tenant_id: tenantId,
+          name: itemData?.name,
+          unit: itemData?.unit || 'Pcs',
+          sale_price: Number(itemData?.sale_price) || 0,
+          purchase_price: Number(itemData?.purchase_price) || 0,
+          opening_stock: Number(itemData?.opening_stock) || 0,
+          low_stock_threshold: itemData?.low_stock_threshold !== undefined && itemData?.low_stock_threshold !== null
+            ? Number(itemData?.low_stock_threshold)
+            : null,
+          hsn_code: itemData?.hsn_code ?? null,
+        }),
+      });
+    } catch (cause: unknown) {
+      if (cause instanceof TypeError) {
+        throw new Error(
+          'Product remains saved on this device. Sync will retry when the connection returns.',
+          { cause },
+        );
+      }
+      throw cause;
+    }
+
+    if (response.ok) {
+      const responseBody = await response.json().catch(() => null) as { item?: { id?: unknown } } | null;
+      await setItemSyncStatus(
+        database,
+        change.id,
+        tenantId,
+        'synced',
+        null,
+        typeof responseBody?.item?.id === 'string' ? responseBody.item.id : change.id,
+      );
+      return;
+    }
+
+    if (this.isTemporaryFailure(response.status)) {
+      throw new Error(`Temporary item sync failure (${response.status}); PowerSync will retry.`);
+    }
+
+    const responseBody = await response.json().catch(() => null) as { error?: unknown } | null;
+    const message = typeof responseBody?.error === 'string'
+      ? responseBody.error
+      : `Product rejected by server (${response.status}).`;
+    await setItemSyncStatus(database, change.id, tenantId, 'rejected', message);
   }
 
   private isTemporaryFailure(status: number) {
