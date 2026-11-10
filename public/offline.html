@@ -15,12 +15,12 @@
       <img class="logo" src="/offline-icon.svg" alt="" width="56" height="56">
       <p class="eyebrow">Bill · Eatera Foods</p>
       <h1>Offline workspace</h1>
-      <p id="connection-status" class="status" role="status">You’re offline.</p>
+      <p id="connection-status" class="status" role="status" aria-live="polite">Checking connection…</p>
       <p class="description">
         This entry screen is available without a network connection. Private account and business data are not stored in the service worker cache.
       </p>
       <p class="description">
-        Reconnect to load the full workspace. Locally synced data will be available here when the offline workspace is connected.
+        Private pages are not cached, so refreshing while offline opens this screen instead. When you reconnect, retry to reopen the page you requested. PowerSync data stays on this device and appears after the workspace opens.
       </p>
       <a class="retry" href="/">Retry connection</a>
     </main>

@@ -1,11 +1,14 @@
 const status = document.querySelector('#connection-status');
+const retryLink = document.querySelector('.retry');
 
 function updateConnectionStatus() {
   const isOnline = navigator.onLine;
   status.dataset.online = String(isOnline);
-  status.textContent = isOnline
-    ? 'Connection restored. Retry to open the full workspace.'
-    : 'You’re offline.';
+  status.textContent = isOnline ? 'Online' : 'Offline';
+}
+
+if (retryLink) {
+  retryLink.href = window.location.href;
 }
 
 window.addEventListener('online', updateConnectionStatus);

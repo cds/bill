@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { TenantSwitcher } from '@/components/layout/tenant-switcher';
+import { ConnectionStatus } from '@/components/layout/connection-status';
 
 type TenantOption = { id: string; name: string };
 
@@ -129,6 +130,7 @@ export function AppHeader({
 
         {/* Logout Button */}
         <div className="flex items-center gap-2">
+          <ConnectionStatus />
           {systemRole === 'super_admin' && tenants.length > 0 && selectedTenantId && (
             <div className="hidden sm:block">
               <TenantSwitcher tenants={tenants} selectedTenantId={selectedTenantId} />

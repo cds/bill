@@ -69,7 +69,6 @@ function LocalPartySearch({
         {
           name: 'current_tenant_parties',
           parameters: { tenant_id: tenantId },
-          waitForStream: true,
         },
       ],
     },

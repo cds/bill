@@ -12,7 +12,7 @@ The connector reads the current session from the existing Supabase browser Auth 
 
 ## Browser persistence check
 
-The `/offline-workspace` route provides the read-only local view. Load it online first and wait for both streams' initial sync before disconnecting. It displays locally stored item stock/prices and party names/types/balances, with loading, empty, and query-error states.
+The `/offline-workspace` route provides the read-only local view. Load it online once to initialize PowerSync and populate its local database. Queries render rows already stored locally immediately while streams continue syncing in the background; a fresh stream sync is not required to see cached rows. It displays item stock/prices and party names/types/balances, with loading, empty, and query-error states.
 
 In the new-sale flow, tenant users' item and customer selection reads the local PowerSync tables and does not require `/api/items` or `/api/parties`. The existing edit-sale flow and super-admin new-sale flow retain online lookup. Cached item stock is an estimate: the database rejects an invoice atomically if its locked current stock cannot cover the sale. New invoice creation is available offline; editing and voiding invoices remain online-only.
 
@@ -46,7 +46,7 @@ export function PowerSyncItemsCheck({ tenantId }: { tenantId: string }) {
   const { data, isLoading, error } = useQuery(
     'SELECT id, name, tenant_id FROM items WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY name',
     [tenantId],
-    { streams: [{ name: 'current_tenant_items', parameters: { tenant_id: tenantId }, waitForStream: true }] },
+    { streams: [{ name: 'current_tenant_items', parameters: { tenant_id: tenantId } }] },
   );
 
   if (error) return <p role="alert">{error.message}</p>;
@@ -67,7 +67,7 @@ With the test Supabase user signed in:
 3. Reconnect and verify sync resumes. Repeat on each target browser/device (including Safari/iOS if supported).
 4. Verify a different tenant ID returns no items for this user, then test a user without membership. Do not use real business data unless cross-tenant isolation passes.
 
-The local database view remains usable while the already-open workspace is disconnected. The service worker's cold-launch fallback remains a static generic page; opening authenticated routes from a cold offline launch is not supported because routing still requires the server. Expense and new-invoice creation are the only supported local writes; other PowerSync CRUD tables remain unsupported.
+The local database view remains usable while the already-open workspace is disconnected. The service worker's cold-launch or offline-refresh fallback remains a static generic page; authenticated routes require a server response to render, and private route HTML is deliberately not cached. When connection returns, the shell's retry link reloads the originally requested route. Expense and new-invoice creation are the only supported local writes; other PowerSync CRUD tables remain unsupported.
 
 Run the credential connector tests with `npx vitest run src/__tests__/powersync-connector.test.ts`.
 

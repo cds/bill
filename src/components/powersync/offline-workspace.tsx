@@ -38,7 +38,6 @@ export function OfflineWorkspace({ tenantId }: { tenantId: string }) {
         {
           name: 'current_tenant_items',
           parameters: { tenant_id: tenantId },
-          waitForStream: true,
         },
       ],
     },
@@ -54,7 +53,6 @@ export function OfflineWorkspace({ tenantId }: { tenantId: string }) {
         {
           name: 'current_tenant_parties',
           parameters: { tenant_id: tenantId },
-          waitForStream: true,
         },
       ],
     },

@@ -54,7 +54,6 @@ function PowerSyncItemSelector({ tenantId, ...props }: ItemSelectorProps & { ten
         {
           name: 'current_tenant_items',
           parameters: { tenant_id: tenantId },
-          waitForStream: true,
         },
       ],
     },

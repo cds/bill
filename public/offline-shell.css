@@ -44,12 +44,30 @@ h1 {
 }
 
 .status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 16px;
+  padding: 6px 10px;
+  border: 1px solid #e6a783;
+  border-radius: 999px;
+  background: #fff5ef;
   color: #a44716;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
+.status::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
 .status[data-online="true"] {
+  border-color: #9dcaa5;
+  background: #eff9f0;
   color: #276738;
 }
 

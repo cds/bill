@@ -57,6 +57,7 @@ describe('offline workspace tenant isolation', () => {
       expect(sql).toMatch(/WHERE tenant_id = \? AND deleted_at IS NULL/);
       expect(parameters).toEqual(['tenant-a']);
       expect(options.streams[0].parameters).toEqual({ tenant_id: 'tenant-a' });
+      expect(options.streams[0].waitForStream).toBeUndefined();
     }
     expect(mockUseQuery).toHaveBeenCalledTimes(2);
   });
