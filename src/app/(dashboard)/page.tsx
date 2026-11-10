@@ -4,6 +4,7 @@ import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { formatCurrency } from '@/lib/utils';
 import { StatCard } from '@/components/shared/stat-card';
 import { Button } from '@/components/ui/button';
+import { OfflineSyncStatus } from '@/components/powersync/offline-sync-status';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -172,9 +173,8 @@ export default async function DashboardPage() {
           icon={AlertTriangle}
           iconClassName="bg-amber-100 text-amber-600"
         />
-      </div>
-
-      {/* Recent Transactions */}
+      {/* Sync Controls */}
+      <OfflineSyncStatus />
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -198,7 +198,6 @@ export default async function DashboardPage() {
     </div>
   );
 }
-
 async function RecentTransactions() {
   const supabase = await createClient();
   const tenantId = await getActiveTenantId();
@@ -272,3 +271,4 @@ async function RecentTransactions() {
     </div>
   );
 }
+
