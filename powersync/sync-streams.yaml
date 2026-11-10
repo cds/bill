@@ -8,41 +8,43 @@ streams:
         SELECT items.*
         FROM items
         WHERE items.deleted_at IS NULL
-          AND items.tenant_id = subscription.parameter('tenant_id')
           AND (
-            subscription.parameter('tenant_id') IN (
+            items.tenant_id IN (
               SELECT tenant_id
               FROM tenant_members
               WHERE user_id = auth.user_id()
+                AND tenant_id = subscription.parameter('tenant_id')
             )
-            OR subscription.parameter('tenant_id') IN (
+            OR items.tenant_id IN (
               SELECT id
               FROM tenants
-              WHERE auth.user_id() IN (
-                SELECT id
-                FROM users
-                WHERE system_role = 'super_admin'
-              )
+              WHERE id = subscription.parameter('tenant_id')
+                AND auth.user_id() IN (
+                  SELECT id
+                  FROM users
+                  WHERE system_role = 'super_admin'
+                )
             )
           )
       - |
         SELECT parties.*
         FROM parties
         WHERE parties.deleted_at IS NULL
-          AND parties.tenant_id = subscription.parameter('tenant_id')
           AND (
-            subscription.parameter('tenant_id') IN (
+            parties.tenant_id IN (
               SELECT tenant_id
               FROM tenant_members
               WHERE user_id = auth.user_id()
+                AND tenant_id = subscription.parameter('tenant_id')
             )
-            OR subscription.parameter('tenant_id') IN (
+            OR parties.tenant_id IN (
               SELECT id
               FROM tenants
-              WHERE auth.user_id() IN (
-                SELECT id
-                FROM users
-                WHERE system_role = 'super_admin'
-              )
+              WHERE id = subscription.parameter('tenant_id')
+                AND auth.user_id() IN (
+                  SELECT id
+                  FROM users
+                  WHERE system_role = 'super_admin'
+                )
             )
           )
