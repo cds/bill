@@ -51,11 +51,14 @@ export async function getPowerSyncDatabase(tenantId: string) {
       // the remote sync connection fails (e.g. auth errors, offline).
       await database.init();
 
-      // Start remote sync in the background — errors are surfaced via
-      // the database's status listener, not by rejecting this promise.
-      database.connect(new SupabasePowerSyncConnector()).catch((err) => {
-        console.warn('[PowerSync] Background sync connection failed:', err);
-      });
+      // Start remote sync in the background unless the user previously
+      // chose Local-only mode — errors are surfaced via status listener.
+      const { getSyncMode } = await import('./sync-mode');
+      if (getSyncMode() !== 'local') {
+        database.connect(new SupabasePowerSyncConnector()).catch((err) => {
+          console.warn('[PowerSync] Background sync connection failed:', err);
+        });
+      }
 
       return database;
     })();
