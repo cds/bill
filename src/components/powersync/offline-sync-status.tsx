@@ -43,7 +43,7 @@ export function OfflineSyncStatus() {
   // If initial saved mode is local, ensure database sync is disconnected
   useEffect(() => {
     if (syncMode === 'local' && status.connected) {
-      void database.disconnect().catch(() => {});
+      void Promise.resolve(database.disconnect()).catch(() => {});
     }
   }, [database, status.connected, syncMode]);
 
