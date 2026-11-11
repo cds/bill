@@ -1,6 +1,5 @@
 import { headers } from 'next/headers';
-import { DashboardTenantShell } from '@/components/powersync/dashboard-tenant-shell';
-import { SalesDetailDashboard } from './sales-detail-dashboard';
+import { SaleDetailPageClient } from './sale-detail-page-client';
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -9,9 +8,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="container mx-auto py-8">
-      <DashboardTenantShell initialTenantId={tenantId}>
-        {(resolvedTenantId) => <SalesDetailDashboard tenantId={resolvedTenantId} invoiceId={id} />}
-      </DashboardTenantShell>
+      <SaleDetailPageClient initialTenantId={tenantId} invoiceId={id} />
     </div>
   );
 }

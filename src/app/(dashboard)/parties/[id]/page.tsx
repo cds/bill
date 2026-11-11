@@ -1,6 +1,5 @@
 import { headers } from 'next/headers';
-import { DashboardTenantShell } from '@/components/powersync/dashboard-tenant-shell';
-import { PartyDetailDashboard } from './party-detail-dashboard';
+import { PartyDetailPageClient } from './party-detail-page-client';
 
 export default async function PartyDetailPage({
   params,
@@ -13,9 +12,7 @@ export default async function PartyDetailPage({
 
   return (
     <div className="container mx-auto py-8">
-      <DashboardTenantShell initialTenantId={tenantId}>
-        {(resolvedTenantId) => <PartyDetailDashboard tenantId={resolvedTenantId} partyId={id} />}
-      </DashboardTenantShell>
+      <PartyDetailPageClient initialTenantId={tenantId} partyId={id} />
     </div>
   );
 }

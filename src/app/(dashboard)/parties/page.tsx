@@ -1,6 +1,5 @@
 import { headers } from 'next/headers';
-import { DashboardTenantShell } from '@/components/powersync/dashboard-tenant-shell';
-import { PartiesDashboard } from './parties-dashboard';
+import { PartiesPageClient } from './parties-page-client';
 
 export const metadata = {
   title: 'Parties',
@@ -12,9 +11,7 @@ export default async function PartiesPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <DashboardTenantShell initialTenantId={tenantId}>
-        {(resolvedTenantId) => <PartiesDashboard tenantId={resolvedTenantId} />}
-      </DashboardTenantShell>
+      <PartiesPageClient initialTenantId={tenantId} />
     </div>
   );
 }
