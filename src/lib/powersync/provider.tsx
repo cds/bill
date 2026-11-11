@@ -117,7 +117,7 @@ function SyncModeGuard() {
     currentStatus?: { connected?: boolean };
     registerListener?: (listener: { statusChanged?: () => void }) => (() => void) | void;
   };
-  const syncMode = useSyncExternalStore(subscribeSyncMode, getSyncMode, () => 'online');
+  const syncMode = useSyncExternalStore(subscribeSyncMode, getSyncMode, () => 'local');
 
   useEffect(() => {
     if (syncMode !== 'local') return;

@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { Expense } from '@/lib/supabase/types';
 import { usePowerSyncOrNull } from '@powersync/react';
 import { saveExpenseLocally } from '@/lib/powersync/expense-writes';
+import { getSyncMode } from '@/lib/powersync/sync-mode';
 import {
   Select,
   SelectContent,
@@ -95,7 +96,15 @@ export function ExpenseForm({ open, onOpenChange, expense, tenantId }: ExpenseFo
         return;
       }
 
-      const res = await fetch(expense ? `/api/expenses/${expense.id}` : '/api/expenses', {
+      if (!expense) {
+        throw new Error('Local database is not available. Open this page with sync enabled to add expenses locally.');
+      }
+
+      if (getSyncMode() === 'local') {
+        throw new Error('Editing synced expenses requires Online mode. Switch to Online on the dashboard, then save again.');
+      }
+
+      const res = await fetch(`/api/expenses/${expense.id}`, {
         method: expense ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,5 +1,5 @@
 import { headers } from 'next/headers';
-import { redirect, notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getActiveTenantId } from '@/lib/supabase/tenant-context';
 import { InvoiceForm } from '@/components/sales/invoice-form';
@@ -35,5 +35,12 @@ export default async function EditSalePage({ params }: { params: Promise<{ id: s
     throw new Error(`Failed to load sale items: ${itemsError.message}`);
   }
 
-  return <InvoiceForm invoice={invoice} invoiceItems={invoiceItems ?? []} />;
+  return (
+    <div className="mx-auto max-w-4xl space-y-4 p-4">
+      <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+        Editing synced sales requires an online connection and cannot be queued in Local-only mode. Switch sync to Online on the dashboard before saving changes.
+      </p>
+      <InvoiceForm invoice={invoice} invoiceItems={invoiceItems ?? []} />
+    </div>
+  );
 }

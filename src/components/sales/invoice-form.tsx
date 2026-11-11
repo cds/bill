@@ -22,6 +22,7 @@ import type { Item } from '@/lib/supabase/types';
 import { usePowerSyncOrNull } from '@powersync/react';
 import { saveInvoiceLocally } from '@/lib/powersync/invoice-writes';
 import { OfflineInvoiceStatusList } from './offline-invoice-status';
+import { getSyncMode } from '@/lib/powersync/sync-mode';
 
 type LineItem = {
   tempId: string;
@@ -282,7 +283,7 @@ export function InvoiceForm({
           estimated_total: grandTotal,
         });
         createOperationRef.current = null;
-        toast.success('Sale recorded offline and queued for sync');
+        toast.success('Sale recorded locally and queued for sync');
 
         if (saveAndNew) {
           dispatch({ type: 'RESET' });
@@ -292,6 +293,12 @@ export function InvoiceForm({
           router.push(`/sales/${localInvoiceId}`);
         }
         return;
+      }
+
+      if (invoice) {
+        if (getSyncMode() === 'local') {
+          throw new Error('Editing synced sales requires Online mode. Switch to Online on the dashboard, then save again.');
+        }
       }
 
       const serializedPayload = JSON.stringify(payload);

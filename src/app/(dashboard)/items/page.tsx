@@ -1,16 +1,18 @@
-import { createClient } from '@/lib/supabase/server'
-import { getActiveTenantId } from '@/lib/supabase/tenant-context'
-import { ItemsPageClient } from '@/components/items/items-page-client'
+import { PowerSyncProvider } from '@/lib/powersync/provider';
+import { getActiveTenantId } from '@/lib/supabase/tenant-context';
+import { ItemsDashboard } from './items-dashboard';
 
 export default async function ItemsPage() {
-  const supabase = await createClient()
-  const tenantId = await getActiveTenantId()
-  
-  const { data: items } = await supabase
-    .from('items')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .order('name')
+  const tenantId = await getActiveTenantId();
 
-  return <ItemsPageClient items={items || []} />
+  return (
+    <PowerSyncProvider
+      tenantId={tenantId}
+      fallback={<p className="p-6" role="status">Opening local items…</p>}
+    >
+      <div className="container mx-auto py-8">
+        <ItemsDashboard tenantId={tenantId} />
+      </div>
+    </PowerSyncProvider>
+  );
 }
