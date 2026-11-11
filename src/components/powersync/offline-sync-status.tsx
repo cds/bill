@@ -35,7 +35,7 @@ export function OfflineSyncStatus() {
   const [requestError, setRequestError] = useState<string | null>(null);
 
   // ── Sync mode (online / local) ─────────────────────────────────────
-  const syncMode = useSyncExternalStore(subscribeSyncMode, getSyncMode, () => 'online');
+  const syncMode = useSyncExternalStore(subscribeSyncMode, getSyncMode, () => 'local');
   const [switching, setSwitching] = useState(false);
   const [pendingChanges, setPendingChanges] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -123,6 +123,8 @@ export function OfflineSyncStatus() {
   async function syncThenSwitchToLocal() {
     setSwitching(true);
     try {
+      // Temporarily allow sync so pending local changes can upload, then go local.
+      setSyncMode('online');
       if (!status.connected) {
         await database.connect(new SupabasePowerSyncConnector());
       }

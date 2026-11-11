@@ -28,7 +28,7 @@ export function SyncModeToggle() {
   const database = usePowerSync();
   const status = useStatus();
 
-  const [mode, setMode] = useState<SyncMode>('online');
+  const [mode, setMode] = useState<SyncMode>('local');
   const [switching, setSwitching] = useState(false);
   const [pendingChanges, setPendingChanges] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -113,6 +113,9 @@ export function SyncModeToggle() {
   async function syncThenSwitchToLocal() {
     setSwitching(true);
     try {
+      // Temporarily allow sync so pending local changes can upload, then go local.
+      setSyncMode('online');
+      setMode('online');
       // Ensure connected for upload
       if (!status.connected) {
         await database.connect(new SupabasePowerSyncConnector());

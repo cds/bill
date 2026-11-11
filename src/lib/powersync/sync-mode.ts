@@ -4,8 +4,9 @@ const KEY = 'powersync_sync_mode';
 const EVENT_NAME = 'powersync_sync_mode_changed';
 
 export function getSyncMode(): SyncMode {
-  if (typeof localStorage === 'undefined') return 'online';
-  return (localStorage.getItem(KEY) as SyncMode) ?? 'online';
+  if (typeof localStorage === 'undefined') return 'local';
+  const stored = localStorage.getItem(KEY);
+  return stored === 'online' || stored === 'local' ? stored : 'local';
 }
 
 export function setSyncMode(mode: SyncMode): void {
