@@ -113,6 +113,7 @@ export function PowerSyncConnectionProvider({
 
 function SyncModeGuard() {
   const database = usePowerSync() as PowerSyncDatabase & {
+    connected?: boolean;
     currentStatus?: { connected?: boolean };
     registerListener?: (listener: { statusChanged?: () => void }) => (() => void) | void;
   };
@@ -121,18 +122,22 @@ function SyncModeGuard() {
   useEffect(() => {
     if (syncMode !== 'local') return;
 
+    const isConnected = () =>
+      Boolean(database?.currentStatus?.connected ?? database?.connected);
+
     const enforce = () => {
-      if (database?.currentStatus?.connected && typeof database.disconnect === 'function') {
-        void database.disconnect().catch((error: unknown) => {
-          console.warn('[PowerSync] Failed to enforce local-only disconnect:', error);
-        });
-      }
+      if (!isConnected() || typeof database?.disconnect !== 'function') return;
+      void database.disconnect().catch((error: unknown) => {
+        console.warn('[PowerSync] Failed to enforce local-only disconnect:', error);
+      });
     };
 
     enforce();
     const unregister = database?.registerListener?.({ statusChanged: enforce });
+    const interval = setInterval(enforce, 2000);
     return () => {
       if (typeof unregister === 'function') unregister();
+      clearInterval(interval);
     };
   }, [database, syncMode]);
 
