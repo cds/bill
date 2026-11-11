@@ -6,13 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OfflineSyncStatus } from '@/components/powersync/offline-sync-status';
 import { SupabasePowerSyncConnector } from '@/lib/powersync/connector';
 
-const { mockConnect, mockUseStatus } = vi.hoisted(() => ({
+const { mockConnect, mockDisconnect, mockGetCrudBatch, mockUseStatus } = vi.hoisted(() => ({
   mockConnect: vi.fn(),
+  mockDisconnect: vi.fn(),
+  mockGetCrudBatch: vi.fn().mockResolvedValue(null),
   mockUseStatus: vi.fn(),
 }));
 
 vi.mock('@powersync/react', () => ({
-  usePowerSync: () => ({ connect: mockConnect }),
+  usePowerSync: () => ({
+    connect: mockConnect,
+    disconnect: mockDisconnect,
+    getCrudBatch: mockGetCrudBatch,
+  }),
   useStatus: () => mockUseStatus(),
 }));
 
@@ -47,11 +53,11 @@ describe('offline sync status', () => {
     await act(async () => root.render(<OfflineSyncStatus />));
 
     expect(container.textContent).toContain('Synced to this device');
-    expect(container.textContent).toContain('Last successful sync:');
-    const button = container.querySelector('button');
-    expect(button?.disabled).toBe(false);
+    expect(container.textContent).toContain('Last sync:');
+    const syncButton = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('Sync now'));
+    expect(syncButton?.disabled).toBe(false);
 
-    await act(async () => button?.click());
+    await act(async () => syncButton?.click());
 
     expect(mockConnect).toHaveBeenCalledOnce();
     expect(mockConnect).toHaveBeenCalledWith(expect.any(SupabasePowerSyncConnector));
@@ -74,7 +80,8 @@ describe('offline sync status', () => {
 
     expect(container.textContent).toContain('Not synced to this device');
     expect(container.textContent).toContain('Reconnect to sync local changes');
-    expect(container.querySelector('button')?.disabled).toBe(true);
+    const syncButton = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('Sync now'));
+    expect(syncButton?.disabled).toBe(true);
   });
 
   it('surfaces PowerSync errors while keeping retry available online', async () => {
@@ -92,6 +99,7 @@ describe('offline sync status', () => {
     await act(async () => root.render(<OfflineSyncStatus />));
 
     expect(container.textContent).toContain('Sync issue: Temporary service outage');
-    expect(container.querySelector('button')?.disabled).toBe(false);
+    const syncButton = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('Sync now'));
+    expect(syncButton?.disabled).toBe(false);
   });
 });

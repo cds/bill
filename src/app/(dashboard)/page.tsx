@@ -83,17 +83,27 @@ export default async function DashboardPage() {
 
   return (
     <div className="px-4 sm:px-6 py-4">
-      {/* Welcome Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Live Business Dashboard</h1>
-        <p className="text-muted-foreground text-sm">
-          {new Date().toLocaleDateString('en-IN', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-          })}
-        </p>
+      {/* Welcome Header & Sync Controls */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Live Business Dashboard</h1>
+          <p className="text-muted-foreground text-sm">
+            {new Date().toLocaleDateString('en-IN', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            })}
+          </p>
+        </div>
+        <div className="w-full sm:w-auto">
+          <PowerSyncProvider
+            tenantId={tenantId}
+            fallback={<p className="text-xs text-muted-foreground" role="status">Loading sync…</p>}
+          >
+            <OfflineSyncStatus />
+          </PowerSyncProvider>
+        </div>
       </div>
 
       {/* Quick Actions */}
@@ -176,13 +186,6 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Sync Controls – requires PowerSync context */}
-      <PowerSyncProvider
-        tenantId={tenantId}
-        fallback={<p className="text-xs text-muted-foreground px-1" role="status">Initialising offline database…</p>}
-      >
-        <OfflineSyncStatus />
-      </PowerSyncProvider>
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
