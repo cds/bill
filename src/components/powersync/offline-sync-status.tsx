@@ -4,7 +4,7 @@ import { usePowerSync, useStatus } from '@powersync/react';
 import { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { SupabasePowerSyncConnector } from '@/lib/powersync/connector';
-import { getSyncMode, setSyncMode, type SyncMode } from '@/lib/powersync/sync-mode';
+import { getSyncMode, setSyncMode, subscribeSyncMode, type SyncMode } from '@/lib/powersync/sync-mode';
 import {
   Dialog,
   DialogContent,
@@ -35,20 +35,17 @@ export function OfflineSyncStatus() {
   const [requestError, setRequestError] = useState<string | null>(null);
 
   // ── Sync mode (online / local) ─────────────────────────────────────
-  const [syncMode, setSyncModeState] = useState<SyncMode>('online');
+  const syncMode = useSyncExternalStore(subscribeSyncMode, getSyncMode, () => 'online');
   const [switching, setSwitching] = useState(false);
   const [pendingChanges, setPendingChanges] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // Hydrate saved mode on mount
+  // If initial saved mode is local, ensure database sync is disconnected
   useEffect(() => {
-    const saved = getSyncMode();
-    setSyncModeState(saved);
-    if (saved === 'local' && status.connected) {
-      void database.disconnect();
+    if (syncMode === 'local' && status.connected) {
+      void database.disconnect().catch(() => {});
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [database, status.connected, syncMode]);
 
   // Count pending (unsynced) changes whenever upload state changes
   const refreshPending = useCallback(async () => {
@@ -101,9 +98,10 @@ export function OfflineSyncStatus() {
     setSwitching(true);
     try {
       await database.disconnect();
-      setSyncMode('local');
-      setSyncModeState('local');
+    } catch (e) {
+      console.warn('[PowerSync] Disconnect error (safe to ignore):', e);
     } finally {
+      setSyncMode('local');
       setSwitching(false);
       setShowConfirm(false);
     }
@@ -112,9 +110,10 @@ export function OfflineSyncStatus() {
   async function switchToOnline() {
     setSwitching(true);
     try {
-      await database.connect(new SupabasePowerSyncConnector());
       setSyncMode('online');
-      setSyncModeState('online');
+      await database.connect(new SupabasePowerSyncConnector());
+    } catch (e) {
+      console.error('[PowerSync] Connect error:', e);
     } finally {
       setSwitching(false);
     }
