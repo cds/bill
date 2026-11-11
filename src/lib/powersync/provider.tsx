@@ -1,10 +1,11 @@
 'use client';
 
-import { PowerSyncContext } from '@powersync/react';
+import { PowerSyncContext, usePowerSync } from '@powersync/react';
 import type { PowerSyncDatabase } from '@powersync/web';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { getSyncMode, subscribeSyncMode } from './sync-mode';
 
 type PowerSyncProviderProps = {
   tenantId: string;
@@ -104,7 +105,36 @@ export function PowerSyncConnectionProvider({
 
   return (
     <PowerSyncContext.Provider value={connection.database}>
+      <SyncModeGuard />
       {children}
     </PowerSyncContext.Provider>
   );
+}
+
+function SyncModeGuard() {
+  const database = usePowerSync() as PowerSyncDatabase & {
+    currentStatus?: { connected?: boolean };
+    registerListener?: (listener: { statusChanged?: () => void }) => (() => void) | void;
+  };
+  const syncMode = useSyncExternalStore(subscribeSyncMode, getSyncMode, () => 'online');
+
+  useEffect(() => {
+    if (syncMode !== 'local') return;
+
+    const enforce = () => {
+      if (database?.currentStatus?.connected && typeof database.disconnect === 'function') {
+        void database.disconnect().catch((error: unknown) => {
+          console.warn('[PowerSync] Failed to enforce local-only disconnect:', error);
+        });
+      }
+    };
+
+    enforce();
+    const unregister = database?.registerListener?.({ statusChanged: enforce });
+    return () => {
+      if (typeof unregister === 'function') unregister();
+    };
+  }, [database, syncMode]);
+
+  return null;
 }
