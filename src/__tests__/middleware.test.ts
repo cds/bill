@@ -265,7 +265,6 @@ describe('Next.js Middleware Routing & RBAC', () => {
     expect(regex.test('/offline-shell.css')).toBe(false)
     expect(regex.test('/offline-shell.js')).toBe(false)
     expect(regex.test('/manifest.webmanifest')).toBe(false)
-    expect(regex.test('/offline-app')).toBe(false)
   })
 
   // ---------- NEW TESTS (M-12 → M-20) ----------

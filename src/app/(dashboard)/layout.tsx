@@ -12,33 +12,32 @@ export default async function DashboardLayout({
   const headersList = await headers();
   const role = headersList.get('x-tenant-role') || 'worker';
   const systemRole = headersList.get('x-system-role') || 'user';
-  const selectedTenantId = headersList.get('x-tenant-id');
+  const selectedTenantId = headersList.get('x-tenant-id') ?? undefined;
   let tenants: Array<{ id: string; name: string }> = [];
 
   if (systemRole === 'super_admin') {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from('tenants')
-      .select('id, name')
-      .order('name');
-
-    if (error) {
-      throw new Error(`Failed to load tenants for the switcher: ${error.message}`);
+    try {
+      const supabase = await createClient();
+      const { data } = await supabase
+        .from('tenants')
+        .select('id, name')
+        .order('name');
+      tenants = data ?? [];
+    } catch {
+      tenants = [];
     }
-
-    tenants = data;
   }
-  
+
   return (
     <>
       <AppHeader
         userRole={role}
         systemRole={systemRole}
         tenants={tenants}
-        selectedTenantId={selectedTenantId ?? undefined}
+        selectedTenantId={selectedTenantId}
       />
       <OfflineTenantPersistence
-        tenantId={selectedTenantId ?? undefined}
+        tenantId={selectedTenantId}
         enabled={Boolean(selectedTenantId)}
       />
       <main className="flex-1 pb-20 sm:pb-6">{children}</main>

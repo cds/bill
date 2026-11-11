@@ -97,7 +97,7 @@ export function OfflineParties({
                 }`}
               >
                 <a
-                  href={`/offline-app?requested=${encodeURIComponent(`/parties/${party.id}`)}`}
+                  href={`/parties/${party.id}`}
                   className="flex flex-wrap items-start justify-between gap-3"
                   onClick={(e) => {
                     if (onSelectParty) {

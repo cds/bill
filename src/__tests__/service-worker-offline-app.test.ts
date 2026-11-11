@@ -1,211 +1,143 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
-const origin = 'https://bill.test';
-const serviceWorkerSource = readFileSync(
-  new URL('../../public/sw.js', import.meta.url),
-  'utf8',
-);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const serviceWorkerSource = readFileSync(path.resolve(__dirname, '../../public/sw.js'), 'utf8');
+const origin = 'https://bill.example';
+
+function normalizeUrl(url: string) {
+  return url.startsWith('http') ? url : `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
+}
 
 function createServiceWorkerHarness() {
-  const listeners = new Map<string, (event: Record<string, unknown>) => void>();
   const entries = new Map<string, Response>();
-  let online = true;
-
-  function cacheKey(input: string | Request) {
-    return new URL(typeof input === 'string' ? input : input.url, origin);
-  }
-
   const cache = {
     addAll: vi.fn(async (urls: string[]) => {
       for (const url of urls) {
-        entries.set(cacheKey(url).href, new Response('cached shell asset'));
+        entries.set(normalizeUrl(url), new Response(url));
       }
     }),
-    put: vi.fn(async (input: string | Request, response: Response) => {
-      entries.set(cacheKey(input).href, response);
+    put: vi.fn(async (request: RequestInfo | URL, response: Response) => {
+      const url = typeof request === 'string' ? request : request instanceof URL ? request.href : request.url;
+      entries.set(normalizeUrl(url), response);
     }),
-    match: vi.fn(async (
-      input: string | Request,
-      options?: { ignoreSearch?: boolean },
-    ) => {
-      const requested = cacheKey(input);
+    match: vi.fn(async (request: RequestInfo | URL, options?: { ignoreSearch?: boolean }) => {
+      const url = normalizeUrl(typeof request === 'string' ? request : request instanceof URL ? request.href : request.url);
+      if (entries.has(url)) return entries.get(url)!.clone();
       if (options?.ignoreSearch) {
-        for (const [key, response] of entries) {
-          if (new URL(key).pathname === requested.pathname) return response;
+        const pathname = new URL(url).pathname;
+        for (const [key, value] of entries.entries()) {
+          try {
+            if (new URL(key).pathname === pathname) return value.clone();
+          } catch {
+            // ignore
+          }
         }
-        return undefined;
       }
-      return entries.get(requested.href);
+      return undefined;
     }),
   };
   const caches = {
     open: vi.fn(async () => cache),
-    match: (input: string | Request) => cache.match(input),
-    keys: vi.fn(async () => []),
+    keys: vi.fn(async () => ['bill-app-shell-v4']),
     delete: vi.fn(async () => true),
+    match: vi.fn(async (request: RequestInfo | URL) => cache.match(request)),
   };
-  let offlineAppHtml =
-    '<html><script src="/_next/static/chunks/offline-app.js"></script><link href="/_next/static/chunks/offline-app.css"></html>';
-  const fetch = vi.fn(async (input: string | Request) => {
-    if (!online) throw new TypeError('Network unavailable');
-    const url = cacheKey(input);
-    if (url.pathname === '/offline-app') {
-      return new Response(
-        offlineAppHtml,
-        { headers: { 'Content-Type': 'text/html', Vary: 'RSC, Accept', 'Set-Cookie': 'private=value' } },
-      );
+  const listeners = new Map<string, (event: any) => void>();
+  let installFetch: typeof fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url === '/' || url === `${origin}/`) {
+      return new Response('<html><head><script src="/_next/static/chunks/app.js"></script><link href="/_next/static/chunks/app.css"></head></html>', { headers: { 'Content-Type': 'text/html' } });
     }
-    if (url.pathname.endsWith('.js')) {
-      return new Response(
-        'const worker = "/_next/static/media/powersync-worker.js"; const wasm = "/_next/static/media/database.wasm";',
-        { headers: { 'Content-Type': 'text/javascript' } },
-      );
-    }
-    if (url.pathname.endsWith('.css')) {
-      return new Response(
-        'body { background-image: url("/_next/static/media/font.woff2"); }',
-        { headers: { 'Content-Type': 'text/css' } },
-      );
-    }
-    return new Response('cached app asset');
-  });
+    return new Response(url, { headers: { 'Content-Type': 'application/javascript' } });
+  }) as unknown as typeof fetch;
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => installFetch(input, init));
 
-  const self = {
-    location: { origin },
-    addEventListener: (type: string, listener: (event: Record<string, unknown>) => void) => {
-      listeners.set(type, listener);
-    },
-    skipWaiting: vi.fn(async () => undefined),
-    clients: { claim: vi.fn(async () => undefined) },
-  };
-
-  runInNewContext(serviceWorkerSource, { self, caches, fetch, URL, Response, Promise, Set });
-
-  return {
-    cache,
-    entries,
-    fetch,
-    listeners,
-    setOnline(value: boolean) {
-      online = value;
-    },
-    setOfflineAppHtml(html: string) {
-      offlineAppHtml = html;
+  const context = {
+    Response,
+    URL,
+    Set,
+    Promise,
+    console,
+    caches,
+    fetch: fetchMock,
+    location: new URL(`${origin}/sw.js`),
+    self: {
+      location: new URL(`${origin}/sw.js`),
+      skipWaiting: vi.fn(async () => undefined),
+      clients: { claim: vi.fn(async () => undefined) },
+      addEventListener: (type: string, listener: (event: unknown) => void) => listeners.set(type, listener as never),
     },
   };
+
+  vm.runInNewContext(serviceWorkerSource, context, { filename: 'sw.js' });
+  return { cache, caches, fetch: fetchMock, listeners, entries, setFetch: (next: typeof fetch) => { installFetch = next; } };
 }
 
-describe('offline service worker entry', () => {
-  let harness: ReturnType<typeof createServiceWorkerHarness>;
+async function runInstall(listeners: Map<string, Function>) {
+  let installPromise = Promise.resolve();
+  listeners.get('install')?.({ waitUntil: (promise: Promise<unknown>) => { installPromise = promise; } });
+  await installPromise;
+}
 
-  beforeEach(() => {
-    harness = createServiceWorkerHarness();
+describe('offline service worker shell', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('pre-caches root app shell and its static assets', async () => {
+    const harness = createServiceWorkerHarness();
+    await runInstall(harness.listeners);
+
+    expect(harness.entries.has(`${origin}/`)).toBe(true);
+    expect(harness.entries.has(`${origin}/_next/static/chunks/app.js`)).toBe(true);
+    expect(harness.entries.has(`${origin}/_next/static/chunks/app.css`)).toBe(true);
+    expect(harness.entries.has(`${origin}/offline.html`)).toBe(true);
   });
 
-  it('pre-caches only the data-free offline app document and its static assets', async () => {
-    let installPromise: Promise<void> | undefined;
-    harness.listeners.get('install')?.({
-      waitUntil(promise: Promise<void>) {
-        installPromise = promise;
-      },
-    });
+  it('serves cached shell for failed navigations without redirecting to /offline-app', async () => {
+    const harness = createServiceWorkerHarness();
+    await runInstall(harness.listeners);
 
-    await installPromise;
-
-    expect(harness.entries.has(`${origin}/offline-app`)).toBe(true);
-    expect(harness.entries.has(`${origin}/_next/static/chunks/offline-app.js`)).toBe(true);
-    expect(harness.entries.has(`${origin}/_next/static/chunks/offline-app.css`)).toBe(true);
-    expect(harness.entries.has(`${origin}/_next/static/media/powersync-worker.js`)).toBe(true);
-    expect(harness.entries.has(`${origin}/_next/static/media/database.wasm`)).toBe(true);
-    expect(harness.entries.has(`${origin}/_next/static/media/font.woff2`)).toBe(true);
-    expect(harness.entries.get(`${origin}/offline-app`)?.headers.get('vary')).toBeNull();
-    expect(harness.entries.get(`${origin}/offline-app`)?.headers.get('set-cookie')).toBeNull();
-    expect(harness.fetch).toHaveBeenCalledWith('/offline-app');
-  });
-
-  it('redirects failed navigations to the cached app and does not preserve query strings', async () => {
-    let installPromise: Promise<void> | undefined;
-    harness.listeners.get('install')?.({
-      waitUntil(promise: Promise<void>) {
-        installPromise = promise;
-      },
-    });
-    await installPromise;
-    harness.setOnline(false);
+    harness.setFetch(vi.fn(async () => { throw new Error('offline'); }) as unknown as typeof fetch);
 
     let responsePromise: Promise<Response> | undefined;
     harness.listeners.get('fetch')?.({
-      request: {
-        method: 'GET',
-        mode: 'navigate',
-        url: `${origin}/sales/new?token=private`,
-      },
-      waitUntil() {},
-      respondWith(promise: Promise<Response>) {
-        responsePromise = promise;
-      },
+      request: { url: `${origin}/parties`, method: 'GET', mode: 'navigate' },
+      respondWith: (promise: Promise<Response>) => { responsePromise = promise; },
+      waitUntil: () => {},
     });
 
-    const redirect = await responsePromise;
-    const location = new URL(redirect?.headers.get('location') ?? '');
-    expect(redirect?.status).toBe(302);
-    expect(location.pathname).toBe('/offline-app');
-    expect(location.searchParams.get('requested')).toBe('/sales/new');
-    expect(location.search).not.toContain('private');
-
-    responsePromise = undefined;
-    harness.listeners.get('fetch')?.({
-      request: {
-        method: 'GET',
-        mode: 'navigate',
-        url: `${origin}/offline-app?requested=%2Fsales%2Fnew`,
-      },
-      waitUntil() {},
-      respondWith(promise: Promise<Response>) {
-        responsePromise = promise;
-      },
-    });
-    const offlineAppResponse = await responsePromise;
-    expect(await offlineAppResponse?.text()).toContain('offline-app.js');
+    const response = await responsePromise;
+    expect(response).toBeDefined();
+    expect(response?.status).toBe(200);
+    expect(await response?.text()).toContain('/_next/static/chunks/app.js');
   });
 
-  it('refreshes the cached offline app after a successful online navigation', async () => {
-    let installPromise: Promise<void> | undefined;
-    harness.listeners.get('install')?.({
-      waitUntil(promise: Promise<void>) {
-        installPromise = promise;
-      },
-    });
-    await installPromise;
+  it('refreshes cached shell after a successful online navigation', async () => {
+    const harness = createServiceWorkerHarness();
+    await runInstall(harness.listeners);
 
-    harness.setOfflineAppHtml(
-      '<html><script src="/_next/static/chunks/offline-app-v2.js"></script></html>',
-    );
+    harness.setFetch(vi.fn(async () => new Response(
+      '<html><script src="/_next/static/chunks/app-v2.js"></script></html>',
+      { headers: { 'Content-Type': 'text/html' }, status: 200 },
+    )) as unknown as typeof fetch);
 
     let responsePromise: Promise<Response> | undefined;
-    let refreshPromise: Promise<void> | undefined;
+    let waitPromise = Promise.resolve();
     harness.listeners.get('fetch')?.({
-      request: {
-        method: 'GET',
-        mode: 'navigate',
-        url: `${origin}/expenses`,
-      },
-      waitUntil(promise: Promise<void>) {
-        refreshPromise = promise;
-      },
-      respondWith(promise: Promise<Response>) {
-        responsePromise = promise;
-      },
+      request: { url: `${origin}/parties`, method: 'GET', mode: 'navigate' },
+      respondWith: (promise: Promise<Response>) => { responsePromise = promise; },
+      waitUntil: (promise: Promise<unknown>) => { waitPromise = promise; },
     });
 
     await responsePromise;
-    await refreshPromise;
+    await waitPromise;
 
-    expect(await harness.entries.get(`${origin}/offline-app`)?.text())
-      .toContain('offline-app-v2.js');
-    expect(harness.entries.has(`${origin}/_next/static/chunks/offline-app-v2.js`))
-      .toBe(true);
+    expect(await harness.entries.get(`${origin}/`)?.text()).toContain('app-v2.js');
+    expect(harness.entries.has(`${origin}/_next/static/chunks/app-v2.js`)).toBe(true);
   });
 });

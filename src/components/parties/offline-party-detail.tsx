@@ -79,7 +79,7 @@ export function OfflinePartyDetail({
           This party was not found in local offline storage on this device.
         </p>
         <a
-          href="/offline-app?requested=%2Fparties"
+          href="/parties"
           className="inline-flex items-center text-sm font-medium underline"
           onClick={(e) => {
             if (onBack) {
@@ -102,7 +102,7 @@ export function OfflinePartyDetail({
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
       <div className="flex items-center justify-between">
         <a
-          href="/offline-app?requested=%2Fparties"
+          href="/parties"
           className="inline-flex items-center text-sm font-medium hover:underline"
           onClick={(e) => {
             if (onBack) {
@@ -197,7 +197,7 @@ export function OfflinePartyDetail({
               return (
                 <li key={inv.id} className="p-4 hover:bg-muted/50 transition-colors">
                   <a
-                    href={`/offline-app?requested=${encodeURIComponent(`/sales/${inv.id}`)}`}
+                    href={`/sales/${inv.id}`}
                     className="flex items-center justify-between gap-4"
                     onClick={(e) => {
                       if (onSelectInvoice) {

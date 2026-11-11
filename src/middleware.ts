@@ -172,8 +172,7 @@ export const config = {
      * - favicon.ico (favicon file)
      * - api/health (health check)
      * - public offline shell, service worker, and web app manifest
-     * - public offline app entry
      */
-    '/((?!_next/static|_next/image|favicon.ico|api/health|sw\\.js$|offline\\.html$|offline-app(?:/|$)|offline-shell\\.(?:css|js)$|manifest\\.webmanifest$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/health|sw\\.js$|offline\\.html$|offline-shell\\.(?:css|js)$|manifest\\.webmanifest$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

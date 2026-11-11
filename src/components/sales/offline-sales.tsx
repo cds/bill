@@ -59,7 +59,7 @@ export function OfflineSales({
           </Button>
         ) : (
           <a
-            href="/offline-app?requested=%2Fsales%2Fnew"
+            href="/sales/new"
             className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-4 w-4 mr-1.5" /> Add Sale
@@ -104,7 +104,7 @@ export function OfflineSales({
                   className="p-4 hover:bg-muted/50 transition-colors"
                 >
                   <a
-                    href={`/offline-app?requested=${encodeURIComponent(`/sales/${invoice.id}`)}`}
+                    href={`/sales/${invoice.id}`}
                     className="flex flex-wrap items-center justify-between gap-3"
                     onClick={(e) => {
                       if (onSelectInvoice) {

@@ -56,7 +56,7 @@ export function OfflineItemDetail({
           This item was not found in local offline storage on this device.
         </p>
         <a
-          href="/offline-app?requested=%2Fitems"
+          href="/items"
           className="inline-flex items-center text-sm font-medium underline"
           onClick={(e) => {
             if (onBack) {
@@ -83,7 +83,7 @@ export function OfflineItemDetail({
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
       <div className="flex items-center justify-between">
         <a
-          href="/offline-app?requested=%2Fitems"
+          href="/items"
           className="inline-flex items-center text-sm font-medium hover:underline"
           onClick={(e) => {
             if (onBack) {

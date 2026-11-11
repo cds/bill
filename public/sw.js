@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bill-offline-shell-v3';
+const CACHE_NAME = 'bill-app-shell-v4';
 const SHELL_ASSETS = [
   '/offline.html',
   '/offline-shell.css',
@@ -7,24 +7,35 @@ const SHELL_ASSETS = [
   '/manifest.webmanifest',
 ];
 
-async function cacheOfflineApp(cache) {
-  const response = await fetch('/offline-app');
+async function cacheAppShell(cache) {
+  // Cache the root dashboard shell and its static assets for offline boot.
+  const response = await fetch('/');
   if (!response.ok) {
-    throw new Error(`Failed to cache the offline app (${response.status}).`);
+    throw new Error(`Failed to cache the app shell (${response.status}).`);
   }
 
   const html = await response.text();
-  await cache.put('/offline-app', new Response(html, {
+  await cache.put('/', new Response(html, {
     headers: {
       'Content-Type': response.headers.get('Content-Type') ?? 'text/html; charset=utf-8',
     },
   }));
+  await cache.put('/index.html', new Response(html, {
+    headers: {
+      'Content-Type': response.headers.get('Content-Type') ?? 'text/html; charset=utf-8',
+    },
+  }));
+
   const pending = new Set();
   const cached = new Set();
   const addAsset = (reference, baseUrl) => {
-    const url = new URL(reference, baseUrl);
-    if (url.origin === self.location.origin && url.pathname.startsWith('/_next/static/')) {
-      pending.add(url.href);
+    try {
+      const url = new URL(reference, baseUrl);
+      if (url.origin === self.location.origin && url.pathname.startsWith('/_next/static/')) {
+        pending.add(url.href);
+      }
+    } catch {
+      // ignore
     }
   };
 
@@ -41,7 +52,7 @@ async function cacheOfflineApp(cache) {
 
       const assetResponse = await fetch(url);
       if (!assetResponse.ok) {
-        throw new Error(`Failed to cache an offline app asset (${assetResponse.status}).`);
+        throw new Error(`Failed to cache an app shell asset (${assetResponse.status}).`);
       }
 
       const assetCopy = assetResponse.clone();
@@ -68,7 +79,11 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then(async (cache) => {
         await cache.addAll(SHELL_ASSETS);
-        await cacheOfflineApp(cache);
+        try {
+          await cacheAppShell(cache);
+        } catch (error) {
+          console.error('Failed to precache app shell:', error);
+        }
       })
       .then(() => self.skipWaiting()),
   );
@@ -79,7 +94,7 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then((cacheNames) => Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName.startsWith('bill-offline-shell-') && cacheName !== CACHE_NAME)
+          .filter((cacheName) => cacheName.startsWith('bill-') && cacheName !== CACHE_NAME)
           .map((cacheName) => caches.delete(cacheName)),
       ))
       .then(() => self.clients.claim()),
@@ -98,30 +113,30 @@ self.addEventListener('fetch', (event) => {
     const navigationResponse = fetch(request);
     event.waitUntil(
       navigationResponse
-        .then((response) => {
+        .then(async (response) => {
           if (!response.ok) return;
-          return caches.open(CACHE_NAME).then(cacheOfflineApp);
+          const cache = await caches.open(CACHE_NAME);
+          try {
+            await cache.put(request, response.clone());
+          } catch {
+            // ignore
+          }
+          try {
+            await cacheAppShell(cache);
+          } catch (error) {
+            console.error('Failed to refresh app shell cache:', error);
+          }
         })
-        .catch((error) => {
-          console.error('Failed to refresh the offline app cache:', error);
-        }),
+        .catch(() => {}),
     );
     event.respondWith(
       navigationResponse.catch(async () => {
         const cache = await caches.open(CACHE_NAME);
-        if (requestUrl.pathname === '/offline-app') {
-          const offlineApp = await cache.match('/offline-app', { ignoreSearch: true });
-          if (offlineApp) return offlineApp;
-        } else {
-          const offlineApp = await cache.match('/offline-app');
-          if (offlineApp) {
-            const fallbackUrl = new URL('/offline-app', self.location.origin);
-            fallbackUrl.searchParams.set('requested', requestUrl.pathname);
-            return Response.redirect(fallbackUrl.href, 302);
-          }
-        }
-
-        const shell = await caches.match('/offline.html');
+        const shell = await cache.match(request, { ignoreSearch: true })
+          || await cache.match(requestUrl.pathname, { ignoreSearch: true })
+          || await cache.match('/')
+          || await cache.match('/index.html')
+          || await caches.match('/offline.html');
         if (!shell) {
           throw new Error('Offline shell is not available in the service worker cache.');
         }

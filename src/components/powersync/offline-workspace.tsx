@@ -167,7 +167,7 @@ export function OfflineWorkspace({
       {/* Quick Action Buttons */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <a
-          href="/offline-app?requested=%2Fsales%2Fnew"
+          href="/sales/new"
           onClick={handleLink('/sales/new')}
           className="flex items-center gap-2 rounded-lg border bg-primary px-3 py-2.5 text-xs font-medium text-primary-foreground shadow-sm hover:opacity-90 transition-opacity"
         >
@@ -175,7 +175,7 @@ export function OfflineWorkspace({
           <span>New Sale</span>
         </a>
         <a
-          href="/offline-app?requested=%2Fexpenses"
+          href="/expenses"
           onClick={handleLink('/expenses')}
           className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors"
         >
@@ -183,7 +183,7 @@ export function OfflineWorkspace({
           <span>Add Expense</span>
         </a>
         <a
-          href="/offline-app?requested=%2Fitems"
+          href="/items"
           onClick={handleLink('/items')}
           className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors"
         >
@@ -191,7 +191,7 @@ export function OfflineWorkspace({
           <span>Items Catalog</span>
         </a>
         <a
-          href="/offline-app?requested=%2Fparties"
+          href="/parties"
           onClick={handleLink('/parties')}
           className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors"
         >
@@ -274,7 +274,7 @@ export function OfflineWorkspace({
             ) : null}
           </h2>
           <a
-            href="/offline-app?requested=%2Fsales"
+            href="/sales"
             onClick={handleLink('/sales')}
             className="text-xs font-medium text-primary hover:underline"
           >
@@ -292,7 +292,7 @@ export function OfflineWorkspace({
               return (
                 <li key={invoice.id} className="p-3.5 hover:bg-muted/50 transition-colors">
                   <a
-                    href={`/offline-app?requested=${encodeURIComponent(`/sales/${invoice.id}`)}`}
+                    href={`/sales/${invoice.id}`}
                     onClick={handleLink(`/sales/${invoice.id}`)}
                     className="flex items-center justify-between gap-4"
                   >
@@ -321,7 +321,7 @@ export function OfflineWorkspace({
             Items Catalog <span className="text-sm font-normal text-muted-foreground">({items.data.length})</span>
           </h2>
           <a
-            href="/offline-app?requested=%2Fitems"
+            href="/items"
             onClick={handleLink('/items')}
             className="text-xs font-medium text-primary hover:underline"
           >
@@ -337,7 +337,7 @@ export function OfflineWorkspace({
             {items.data.slice(0, 5).map((item) => (
               <li key={item.id} className="p-3.5 hover:bg-muted/50 transition-colors">
                 <a
-                  href={`/offline-app?requested=${encodeURIComponent(`/items/${item.id}`)}`}
+                  href={`/items/${item.id}`}
                   onClick={handleLink(`/items/${item.id}`)}
                   className="flex items-center justify-between gap-4"
                 >
@@ -362,7 +362,7 @@ export function OfflineWorkspace({
             Parties <span className="text-sm font-normal text-muted-foreground">({parties.data.length})</span>
           </h2>
           <a
-            href="/offline-app?requested=%2Fparties"
+            href="/parties"
             onClick={handleLink('/parties')}
             className="text-xs font-medium text-primary hover:underline"
           >
@@ -378,7 +378,7 @@ export function OfflineWorkspace({
             {parties.data.slice(0, 5).map((party) => (
               <li key={party.id} className="p-3.5 hover:bg-muted/50 transition-colors">
                 <a
-                  href={`/offline-app?requested=${encodeURIComponent(`/parties/${party.id}`)}`}
+                  href={`/parties/${party.id}`}
                   onClick={handleLink(`/parties/${party.id}`)}
                   className="flex items-center justify-between gap-4"
                 >

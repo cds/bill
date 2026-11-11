@@ -1,5 +1,5 @@
-import { PowerSyncProvider } from '@/lib/powersync/provider';
-import { getActiveTenantId } from '@/lib/supabase/tenant-context';
+import { headers } from 'next/headers';
+import { DashboardTenantShell } from '@/components/powersync/dashboard-tenant-shell';
 import { PartyDetailDashboard } from './party-detail-dashboard';
 
 export default async function PartyDetailPage({
@@ -8,16 +8,14 @@ export default async function PartyDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const tenantId = await getActiveTenantId();
+  const headerStore = await headers();
+  const tenantId = headerStore.get('x-tenant-id');
 
   return (
-    <PowerSyncProvider
-      tenantId={tenantId}
-      fallback={<p className="p-6" role="status">Opening party details…</p>}
-    >
-      <div className="container mx-auto py-8">
-        <PartyDetailDashboard tenantId={tenantId} partyId={id} />
-      </div>
-    </PowerSyncProvider>
+    <div className="container mx-auto py-8">
+      <DashboardTenantShell initialTenantId={tenantId}>
+        {(resolvedTenantId) => <PartyDetailDashboard tenantId={resolvedTenantId} partyId={id} />}
+      </DashboardTenantShell>
+    </div>
   );
 }

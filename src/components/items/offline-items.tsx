@@ -100,7 +100,7 @@ export function OfflineItems({
                 }`}
               >
                 <a
-                  href={`/offline-app?requested=${encodeURIComponent(`/items/${item.id}`)}`}
+                  href={`/items/${item.id}`}
                   className="flex flex-wrap items-center justify-between gap-3"
                   onClick={(e) => {
                     if (onSelectItem) {

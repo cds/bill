@@ -119,7 +119,7 @@ export function OfflineInvoiceDetail({
           This invoice was not found in local offline storage on this device.
         </p>
         <a
-          href="/offline-app?requested=%2Fsales"
+          href="/sales"
           className="inline-flex items-center text-sm font-medium underline"
           onClick={(e) => {
             if (onBack) {
@@ -149,7 +149,7 @@ export function OfflineInvoiceDetail({
       <div className="mx-auto max-w-3xl space-y-6 pb-12">
         <div className="flex items-center justify-between print:hidden">
           <a
-            href="/offline-app?requested=%2Fsales"
+            href="/sales"
             className="inline-flex items-center text-sm font-medium hover:underline"
             onClick={(e) => {
               if (onBack) {
@@ -259,7 +259,7 @@ export function OfflineInvoiceDetail({
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
       <div className="flex items-center justify-between print:hidden">
         <a
-          href="/offline-app?requested=%2Fsales"
+          href="/sales"
           className="inline-flex items-center text-sm font-medium hover:underline"
           onClick={(e) => {
             if (onBack) {
